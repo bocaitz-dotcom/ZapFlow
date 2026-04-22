@@ -3,6 +3,12 @@ import { getWsUrl } from "./api";
 
 export function useWebSocket(onMessage) {
   const ref = useRef(null);
+  // Keep the latest callback in a ref so the effect below doesn't need to
+  // re-subscribe every render. This avoids the "stale closure" problem where
+  // handlers receive outdated state (e.g. the previously selected chat).
+  const cbRef = useRef(onMessage);
+  cbRef.current = onMessage;
+
   useEffect(() => {
     const url = getWsUrl();
     if (!url) return;
@@ -15,7 +21,7 @@ export function useWebSocket(onMessage) {
         ws.send("ping");
       };
       ws.onmessage = (e) => {
-        try { onMessage?.(JSON.parse(e.data)); } catch {}
+        try { cbRef.current?.(JSON.parse(e.data)); } catch { /* ignore */ }
       };
       ws.onclose = () => {
         if (!stopped) retry = setTimeout(connect, 3000);
@@ -28,7 +34,6 @@ export function useWebSocket(onMessage) {
       clearTimeout(retry);
       ref.current?.close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return ref;
 }

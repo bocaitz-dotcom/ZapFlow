@@ -27,7 +27,76 @@ const WEBHOOK_SECRET = process.env.WA_WEBHOOK_SECRET || "zapflow-webhook-secret"
 fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 
 const logger = pino({ level: "warn" }).child({ stream: "baileys" });
-const sessions = new Map(); // sessionId -> { sock, qrBase64, status, phone }
+const sessions = new Map(); // sessionId -> { sock, qrBase64, status, phone, lidMap }
+
+// ---------- LID <-> phone persistent mapping ----------
+// WhatsApp delivers inbound messages keyed by an opaque LID
+// (e.g. "12345@lid") instead of the real phone JID. Before the user replies
+// we resolve their phone via sock.onWhatsApp() (on send) — that response
+// includes the lid, so we persist a {lid_digits -> phone_digits} map per
+// session and use it on incoming messages.
+function lidMapPath(sessionId) {
+  return path.join(SESSIONS_DIR, sessionId, "lid-map.json");
+}
+
+function loadLidMap(sessionId) {
+  try {
+    const raw = fs.readFileSync(lidMapPath(sessionId), "utf8");
+    return new Map(Object.entries(JSON.parse(raw) || {}));
+  } catch (_) {
+    return new Map();
+  }
+}
+
+function saveLidMap(sessionId, map) {
+  try {
+    const obj = Object.fromEntries(map);
+    fs.writeFileSync(lidMapPath(sessionId), JSON.stringify(obj));
+  } catch (err) {
+    console.warn("[lidmap] save failed:", err?.message);
+  }
+}
+
+function digitsOf(jid) {
+  return String(jid || "").split("@")[0].replace(/\D/g, "");
+}
+
+function recordLidMapping(sessionId, lidJid, phoneJid) {
+  if (!lidJid || !phoneJid) return;
+  const lidD = digitsOf(lidJid);
+  const phoneD = digitsOf(phoneJid);
+  if (!lidD || !phoneD) return;
+  const s = sessions.get(sessionId);
+  if (!s) return;
+  if (!s.lidMap) s.lidMap = loadLidMap(sessionId);
+  if (s.lidMap.get(lidD) !== phoneD) {
+    s.lidMap.set(lidD, phoneD);
+    saveLidMap(sessionId, s.lidMap);
+    console.log(`[lidmap] ${sessionId}: ${lidD} -> ${phoneD}`);
+    // Notify backend so any orphan conversation under the LID gets merged
+    // into the real phone thread retroactively.
+    sendWebhook({
+      event: "lid_mapping",
+      session_id: sessionId,
+      user_id: s.userId,
+      lid: lidD,
+      phone: phoneD,
+    }).catch(() => {});
+  }
+}
+
+function resolvePhoneFromJid(sessionId, jid) {
+  if (!jid) return jid;
+  if (jid.endsWith("@s.whatsapp.net")) return jid;
+  if (jid.endsWith("@lid")) {
+    const s = sessions.get(sessionId);
+    if (s?.lidMap) {
+      const phoneD = s.lidMap.get(digitsOf(jid));
+      if (phoneD) return `${phoneD}@s.whatsapp.net`;
+    }
+  }
+  return jid;
+}
 
 async function sendWebhook(payload) {
   try {
@@ -70,6 +139,7 @@ async function startSession(sessionId, userId, displayName) {
     phone: null,
     userId,
     displayName,
+    lidMap: loadLidMap(sessionId),
   };
   sessions.set(sessionId, entry);
 
@@ -142,7 +212,19 @@ async function startSession(sessionId, userId, displayName) {
   sock.ev.on("messages.upsert", async (m) => {
     for (const msg of m.messages) {
       if (msg.key.fromMe) continue;
-      const from = msg.key.remoteJid;
+      const rawJid = msg.key.remoteJid || "";
+      // Try, in order: Baileys-populated senderPn, our recorded LID->phone
+      // mapping, and finally fall back to the raw JID.
+      const senderPn = msg.key.senderPn || "";
+      let from = rawJid;
+      if (rawJid.endsWith("@lid")) {
+        if (senderPn) {
+          from = senderPn;
+          recordLidMapping(sessionId, rawJid, senderPn);
+        } else {
+          from = resolvePhoneFromJid(sessionId, rawJid);
+        }
+      }
       const text =
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
@@ -152,6 +234,8 @@ async function startSession(sessionId, userId, displayName) {
         session_id: sessionId,
         user_id: userId,
         from,
+        from_raw: rawJid,
+        push_name: msg.pushName || null,
         text,
       }).catch(() => {});
     }
@@ -191,11 +275,15 @@ function jidFromPhone(number) {
  * Returns the authoritative JID (WhatsApp may use a different digit
  * sequence, e.g. Brazilian numbers without the extra '9').
  */
-async function resolveJid(sock, number) {
+async function resolveJid(sock, number, sessionId) {
   const raw = jidFromPhone(number);
   try {
     const [result] = await sock.onWhatsApp(raw);
-    if (result?.exists && result.jid) return result.jid;
+    if (result?.exists && result.jid) {
+      // Record LID<->phone mapping if Baileys returned it (newer versions do).
+      if (result.lid && sessionId) recordLidMapping(sessionId, result.lid, result.jid);
+      return result.jid;
+    }
   } catch (err) {
     console.warn("[onWhatsApp] failed for", raw, err?.message);
   }
@@ -205,7 +293,10 @@ async function resolveJid(sock, number) {
     const alt = digits.slice(0, 4) + digits.slice(5); // drop the first digit after DDD
     try {
       const [result2] = await sock.onWhatsApp(`${alt}@s.whatsapp.net`);
-      if (result2?.exists && result2.jid) return result2.jid;
+      if (result2?.exists && result2.jid) {
+        if (result2.lid && sessionId) recordLidMapping(sessionId, result2.lid, result2.jid);
+        return result2.jid;
+      }
     } catch (_) {}
   }
   return null;
@@ -215,7 +306,7 @@ async function sendText(sessionId, number, text) {
   const s = sessions.get(sessionId);
   if (!s || !s.sock) throw new Error("Session not active");
   if (s.status !== "conectado") throw new Error("Session not connected");
-  const jid = await resolveJid(s.sock, number);
+  const jid = await resolveJid(s.sock, number, sessionId);
   if (!jid) throw new Error(`Número ${number} não possui WhatsApp`);
   const sent = await s.sock.sendMessage(jid, { text });
   console.log(`[send-text] sess=${sessionId} to=${jid} id=${sent?.key?.id}`);
@@ -226,7 +317,7 @@ async function sendAudio(sessionId, number, audioBase64, mime = "audio/mp4") {
   const s = sessions.get(sessionId);
   if (!s || !s.sock) throw new Error("Session not active");
   if (s.status !== "conectado") throw new Error("Session not connected");
-  const jid = await resolveJid(s.sock, number);
+  const jid = await resolveJid(s.sock, number, sessionId);
   if (!jid) throw new Error(`Número ${number} não possui WhatsApp`);
   const buffer = Buffer.from(audioBase64, "base64");
   const sent = await s.sock.sendMessage(jid, {

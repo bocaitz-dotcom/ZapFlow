@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { apiClient } from "../lib/api";
 import { useWebSocket } from "../lib/ws";
 import { PageHeader, Empty } from "../components/Primitives";
-import { MessageCircle, Send, Search, Loader2, Check, CheckCheck, AlertCircle } from "lucide-react";
+import { MessageCircle, Send, Search, Loader2, Check, CheckCheck, AlertCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 function fmtTime(iso) {
@@ -142,6 +142,19 @@ export default function ChatPage() {
       toast.error(err?.response?.data?.detail || "Falha no envio");
     } finally {
       setSending(false);
+    }
+  };
+
+  const deleteConv = async (phone, e) => {
+    e?.stopPropagation();
+    if (!window.confirm(`Apagar a conversa com ${phone}?`)) return;
+    try {
+      await apiClient.delete("/chat/conversation", { params: { phone } });
+      toast.success("Conversa apagada");
+      if (activePhone === phone) setActivePhone(null);
+      loadConversations();
+    } catch {
+      toast.error("Falha ao apagar");
     }
   };
 

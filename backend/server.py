@@ -201,6 +201,63 @@ def normalize_phone(raw: str) -> Optional[str]:
     return digits
 
 
+def _phone_last10(p: str) -> str:
+    """Last 10 digits = DDD (2) + subscriber (8) — stable across BR 12/13-digit
+    variants and LID prefixes. Used to reconcile inbound replies with the
+    outgoing number we originally sent to."""
+    digits = re.sub(r"\D", "", p or "")
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+async def resolve_canonical_phone(db, user_id: str, incoming: str) -> str:
+    """Given an incoming phone from WhatsApp (possibly a LID or 12/13-digit
+    variant), find the phone we already have in our records (contacts or
+    outgoing messages) that matches on the last 10 digits, and return that
+    canonical phone so the conversation stays unified. Falls back to the
+    normalized/original incoming number."""
+    if not incoming:
+        return incoming
+
+    # 0. Explicit LID -> phone mapping captured on send (most reliable)
+    digits_only = re.sub(r"\D", "", incoming)
+    if digits_only:
+        lm = await db.lid_mappings.find_one(
+            {"user_id": user_id, "lid": digits_only}, {"_id": 0, "phone": 1}
+        )
+        if lm and lm.get("phone"):
+            return lm["phone"]
+
+    key = _phone_last10(incoming)
+    if not key or len(key) < 10:
+        return normalize_phone(incoming) or incoming
+
+    # 1. Prefer an existing contact
+    contacts = await db.contacts.find(
+        {"user_id": user_id}, {"_id": 0, "phone": 1}
+    ).to_list(5000)
+    for c in contacts:
+        if _phone_last10(c.get("phone") or "") == key:
+            return c["phone"]
+
+    # 2. Any outgoing campaign/chat message we already sent to this number
+    # scan a bounded set (cheap for demo volumes)
+    camp_msgs = await db.messages.find(
+        {"user_id": user_id}, {"_id": 0, "contact_phone": 1},
+    ).to_list(10000)
+    for m in camp_msgs:
+        if _phone_last10(m.get("contact_phone") or "") == key:
+            return m["contact_phone"]
+
+    chat_msgs = await db.chat_messages.find(
+        {"user_id": user_id, "direction": "out"}, {"_id": 0, "phone": 1},
+    ).to_list(10000)
+    for m in chat_msgs:
+        if _phone_last10(m.get("phone") or "") == key:
+            return m["phone"]
+
+    return normalize_phone(incoming) or incoming
+
+
 @api.get("/contacts", response_model=List[Contact])
 async def list_contacts(current=Depends(get_current_user), search: Optional[str] = None):
     q = {"user_id": current["id"]}
@@ -417,45 +474,85 @@ async def whatsapp_webhook(
             "type": "session_status", "session_id": sid, "status": new_status,
         })
 
-    elif event == "incoming_message":
-        # Mark any 'enviado/entregue/lido' msgs from this number as responded
-        number = (payload.get("from") or "").split("@")[0]
-        text = (payload.get("text") or "").strip()
-        if number:
-            # Try to find the contact name (if any)
-            contact = await db.contacts.find_one(
-                {"user_id": real_user_id, "phone": number}, {"_id": 0, "name": 1}
+    elif event == "lid_mapping":
+        # Node sidecar resolved a LID -> phone. Persist and retroactively merge
+        # any chat_messages previously keyed to the raw LID into the real phone
+        # conversation.
+        lid = (payload.get("lid") or "").strip()
+        phone = (payload.get("phone") or "").strip()
+        if lid and phone and lid != phone:
+            await db.lid_mappings.update_one(
+                {"user_id": real_user_id, "lid": lid},
+                {"$set": {"user_id": real_user_id, "lid": lid, "phone": phone,
+                          "session_id": sid, "updated_at": now_iso()}},
+                upsert=True,
             )
-            name = contact["name"] if contact else None
-
-            # Persist incoming chat message
-            if text:
-                chat_doc = ChatMessage(
-                    user_id=real_user_id,
-                    session_id=sid,
-                    phone=number,
-                    name=name,
-                    direction="in",
-                    content=text,
-                    status="entregue",
-                    read=False,
-                ).model_dump()
-                await db.chat_messages.insert_one(dict(chat_doc))
+            r = await db.chat_messages.update_many(
+                {"user_id": real_user_id, "phone": lid},
+                {"$set": {"phone": phone}},
+            )
+            if r.modified_count:
                 await manager.send_to_user(real_user_id, {
-                    "type": "chat_incoming",
-                    "message": chat_doc,
+                    "type": "chat_merged",
+                    "from_phone": lid, "to_phone": phone,
+                    "moved": r.modified_count,
                 })
 
-            # Existing behavior: mark campaign msgs as responded
+    elif event == "incoming_message":
+        # Reconcile the incoming sender with conversations we already have,
+        # so WhatsApp LIDs ("12345@lid") and digit-variant numbers (12 vs 13
+        # digit BR numbers) all end up in the same chat thread.
+        raw_from = payload.get("from") or ""
+        raw_lid = payload.get("from_raw") or raw_from
+        push_name = payload.get("push_name")
+        number_in = raw_from.split("@")[0]
+        text = (payload.get("text") or "").strip()
+        canonical = await resolve_canonical_phone(db, real_user_id, number_in)
+        # If the raw_lid/number is different from canonical, migrate any
+        # previously-orphan chat_messages stored under the bad key onto the
+        # canonical phone so the conversation is unified retroactively.
+        lid_number = (raw_lid.split("@")[0] if raw_lid else number_in)
+        for bad_key in {number_in, lid_number}:
+            if bad_key and bad_key != canonical:
+                await db.chat_messages.update_many(
+                    {"user_id": real_user_id, "phone": bad_key},
+                    {"$set": {"phone": canonical}},
+                )
+
+        # Try to find the contact name (if any)
+        contact = await db.contacts.find_one(
+            {"user_id": real_user_id, "phone": canonical}, {"_id": 0, "name": 1}
+        )
+        name = contact["name"] if contact else push_name
+
+        # Persist incoming chat message
+        if text and canonical:
+            chat_doc = ChatMessage(
+                user_id=real_user_id,
+                session_id=sid,
+                phone=canonical,
+                name=name,
+                direction="in",
+                content=text,
+                status="entregue",
+                read=False,
+            ).model_dump()
+            await db.chat_messages.insert_one(dict(chat_doc))
+            await manager.send_to_user(real_user_id, {
+                "type": "chat_incoming",
+                "message": chat_doc,
+            })
+
+        # Existing behavior: mark campaign msgs as responded
+        if canonical:
             r = await db.messages.update_many(
-                {"user_id": real_user_id, "contact_phone": number,
+                {"user_id": real_user_id, "contact_phone": canonical,
                  "status": {"$in": ["enviado", "entregue", "lido"]}},
                 {"$set": {"status": "respondido"}},
             )
             if r.modified_count:
-                # Update campaign counters
                 msgs = await db.messages.find(
-                    {"user_id": real_user_id, "contact_phone": number, "status": "respondido"},
+                    {"user_id": real_user_id, "contact_phone": canonical, "status": "respondido"},
                     {"_id": 0, "campaign_id": 1},
                 ).to_list(100)
                 seen = set()
@@ -839,6 +936,34 @@ async def chat_send(data: ChatSendRequest, current=Depends(get_current_user)):
     })
 
     return {"ok": status != "falha", "status": status, "error": error, "message": chat_doc}
+
+
+@api.post("/chat/merge")
+async def chat_merge(
+    from_phone: str = Query(..., min_length=4),
+    to_phone: str = Query(..., min_length=4),
+    current=Depends(get_current_user),
+):
+    """Move all messages from 'from_phone' into 'to_phone' (used to clean up
+    orphan LID conversations back into the real phone thread)."""
+    if from_phone == to_phone:
+        return {"moved": 0}
+    r = await db.chat_messages.update_many(
+        {"user_id": current["id"], "phone": from_phone},
+        {"$set": {"phone": to_phone}},
+    )
+    return {"moved": r.modified_count}
+
+
+@api.delete("/chat/conversation")
+async def chat_delete_conversation(
+    phone: str = Query(..., min_length=4),
+    current=Depends(get_current_user),
+):
+    r = await db.chat_messages.delete_many(
+        {"user_id": current["id"], "phone": phone}
+    )
+    return {"deleted": r.deleted_count}
 
 
 # ============== WEBSOCKET ==============

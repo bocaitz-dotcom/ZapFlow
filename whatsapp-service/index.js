@@ -308,6 +308,16 @@ async function sendText(sessionId, number, text) {
   if (s.status !== "conectado") throw new Error("Session not connected");
   const jid = await resolveJid(s.sock, number, sessionId);
   if (!jid) throw new Error(`Número ${number} não possui WhatsApp`);
+  // Force-establish the Signal end-to-end session before sending. Without
+  // this, recipients often see the "Waiting for this message" placeholder
+  // because their device can't decrypt the first message.
+  try {
+    if (typeof s.sock.assertSessions === "function") {
+      await s.sock.assertSessions([jid], true);
+    }
+  } catch (err) {
+    console.warn("[assertSessions] warn:", err?.message);
+  }
   const sent = await s.sock.sendMessage(jid, { text });
   console.log(`[send-text] sess=${sessionId} to=${jid} id=${sent?.key?.id}`);
   return { ok: true, jid, message_id: sent?.key?.id };
@@ -319,6 +329,13 @@ async function sendAudio(sessionId, number, audioBase64, mime = "audio/mp4") {
   if (s.status !== "conectado") throw new Error("Session not connected");
   const jid = await resolveJid(s.sock, number, sessionId);
   if (!jid) throw new Error(`Número ${number} não possui WhatsApp`);
+  try {
+    if (typeof s.sock.assertSessions === "function") {
+      await s.sock.assertSessions([jid], true);
+    }
+  } catch (err) {
+    console.warn("[assertSessions] warn:", err?.message);
+  }
   const buffer = Buffer.from(audioBase64, "base64");
   const sent = await s.sock.sendMessage(jid, {
     audio: buffer,

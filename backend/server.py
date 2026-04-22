@@ -884,28 +884,35 @@ async def chat_send(data: ChatSendRequest, current=Depends(get_current_user)):
     if not data.text.strip():
         raise HTTPException(400, "Mensagem vazia")
 
-    phone = normalize_phone(data.phone) or data.phone
+    # Resolve the destination phone. If the frontend passes a LID (from an
+    # orphan conversation), map it back to the real phone via lid_mappings.
+    raw_phone = re.sub(r"\D", "", data.phone or "")
+    lm = await db.lid_mappings.find_one(
+        {"user_id": current["id"], "lid": raw_phone}, {"_id": 0, "phone": 1}
+    )
+    resolved = lm["phone"] if lm else raw_phone
+    phone = normalize_phone(resolved) or resolved
     session_id = data.session_id
 
-    # Pick a connected session if none supplied
-    if not session_id:
-        s = await db.whatsapp_sessions.find_one(
+    # Always prefer a connected session. If the provided session_id is not
+    # connected (stale from old chat history), pick any connected session.
+    picked = None
+    if session_id:
+        picked = await db.whatsapp_sessions.find_one(
+            {"id": session_id, "user_id": current["id"], "status": "conectado"},
+            {"_id": 0},
+        )
+    if not picked:
+        picked = await db.whatsapp_sessions.find_one(
             {"user_id": current["id"], "status": "conectado"}, {"_id": 0}
         )
-        session_id = s["id"] if s else None
+    session_id = picked["id"] if picked else None
 
-    # Try real send via Baileys sidecar; tolerate failure so message still
-    # gets logged (so the user sees their typed message in the UI).
     status = "enviado"
     error = None
     if session_id:
         try:
-            st = await wa_client.status(session_id)
-            if st.get("status") == "conectado":
-                await wa_client.send_text(session_id, phone, data.text)
-            else:
-                status = "falha"
-                error = "Sessão WhatsApp não conectada"
+            await wa_client.send_text(session_id, phone, data.text)
         except Exception as e:
             status = "falha"
             error = str(e)
@@ -913,12 +920,13 @@ async def chat_send(data: ChatSendRequest, current=Depends(get_current_user)):
         status = "falha"
         error = "Nenhuma instância WhatsApp conectada"
 
-    # Try to find contact name
     contact = await db.contacts.find_one(
         {"user_id": current["id"], "phone": phone}, {"_id": 0, "name": 1}
     )
     name = contact["name"] if contact else None
 
+    # Persist the outgoing message under the canonical (resolved) phone so it
+    # stays in the same conversation thread, even if the UI still had the LID.
     chat_doc = ChatMessage(
         user_id=current["id"],
         session_id=session_id,
@@ -930,6 +938,14 @@ async def chat_send(data: ChatSendRequest, current=Depends(get_current_user)):
         read=True,
     ).model_dump()
     await db.chat_messages.insert_one(dict(chat_doc))
+
+    # If the caller still had the LID open, also migrate any past chat_messages
+    # keyed to the LID into the resolved phone thread so the UI unifies.
+    if raw_phone and raw_phone != phone:
+        await db.chat_messages.update_many(
+            {"user_id": current["id"], "phone": raw_phone},
+            {"$set": {"phone": phone}},
+        )
 
     await manager.send_to_user(current["id"], {
         "type": "chat_outgoing", "message": chat_doc,
@@ -945,13 +961,25 @@ async def chat_merge(
     current=Depends(get_current_user),
 ):
     """Move all messages from 'from_phone' into 'to_phone' (used to clean up
-    orphan LID conversations back into the real phone thread)."""
+    orphan LID conversations back into the real phone thread). Also records
+    a permanent lid_mapping so future replies from that LID auto-merge."""
     if from_phone == to_phone:
         return {"moved": 0}
+    to_norm = normalize_phone(to_phone) or to_phone
+    from_digits = re.sub(r"\D", "", from_phone)
     r = await db.chat_messages.update_many(
         {"user_id": current["id"], "phone": from_phone},
-        {"$set": {"phone": to_phone}},
+        {"$set": {"phone": to_norm}},
     )
+    # Persist the mapping so future inbound messages from this LID land in
+    # the right thread automatically.
+    if from_digits and from_digits != to_norm:
+        await db.lid_mappings.update_one(
+            {"user_id": current["id"], "lid": from_digits},
+            {"$set": {"user_id": current["id"], "lid": from_digits,
+                      "phone": to_norm, "updated_at": now_iso()}},
+            upsert=True,
+        )
     return {"moved": r.modified_count}
 
 

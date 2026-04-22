@@ -29,6 +29,16 @@ function fmtPhone(p) {
   return `+${s}`;
 }
 
+// LID conversations look like bare 14-17 digit strings that don't start with
+// a real country code (BR=55). They can't be replied to until the user
+// associates them with a real contact.
+function isOrphanLid(phone) {
+  const s = String(phone || "").replace(/\D/g, "");
+  if (!s) return false;
+  if (s.startsWith("55") && s.length >= 12 && s.length <= 13) return false;
+  return s.length >= 13; // heuristic
+}
+
 function StatusIcon({ status }) {
   if (status === "falha") return <AlertCircle size={12} className="text-red-400" />;
   if (status === "lido" || status === "respondido") return <CheckCheck size={12} className="text-sky-400" />;
@@ -45,6 +55,9 @@ export default function ChatPage() {
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [contacts, setContacts] = useState([]);
+  const [assocOpen, setAssocOpen] = useState(false);
+  const [assocQuery, setAssocQuery] = useState("");
   const bottomRef = useRef(null);
 
   const loadConversations = useCallback(async () => {
@@ -130,10 +143,16 @@ export default function ChatPage() {
       });
       setDraft("");
       const m = r.data.message;
-      setMessages((prev) => [...prev, {
-        id: m.id, direction: "out", content: m.content,
-        created_at: m.created_at, status: m.status, source: "chat",
-      }]);
+      // If backend resolved our LID to the real phone, jump to that thread
+      // so the user sees the message in the unified conversation.
+      if (m?.phone && m.phone !== activePhone) {
+        setActivePhone(m.phone);
+      } else {
+        setMessages((prev) => [...prev, {
+          id: m.id, direction: "out", content: m.content,
+          created_at: m.created_at, status: m.status, source: "chat",
+        }]);
+      }
       if (!r.data.ok) {
         toast.error(r.data.error || "Falha ao enviar, mensagem salva localmente");
       }
@@ -157,6 +176,40 @@ export default function ChatPage() {
       toast.error("Falha ao apagar");
     }
   };
+
+  const openAssociate = async () => {
+    setAssocOpen(true);
+    setAssocQuery("");
+    try {
+      const r = await apiClient.get("/contacts");
+      setContacts(r.data || []);
+    } catch {
+      setContacts([]);
+    }
+  };
+
+  const associateTo = async (toPhone) => {
+    if (!activePhone) return;
+    try {
+      await apiClient.post("/chat/merge", null, {
+        params: { from_phone: activePhone, to_phone: toPhone },
+      });
+      toast.success("Conversa associada ao contato");
+      setAssocOpen(false);
+      setActivePhone(toPhone);
+      loadConversations();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Falha ao associar");
+    }
+  };
+
+  const filteredContacts = useMemo(() => {
+    if (!assocQuery.trim()) return contacts;
+    const q = assocQuery.trim().toLowerCase();
+    return contacts.filter((c) =>
+      (c.name || "").toLowerCase().includes(q) || (c.phone || "").includes(q)
+    );
+  }, [contacts, assocQuery]);
 
   const onKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -309,6 +362,29 @@ export default function ChatPage() {
                 </button>
               </div>
 
+              {/* Orphan-LID warning banner */}
+              {isOrphanLid(activePhone) && (
+                <div
+                  data-testid="chat-orphan-warning"
+                  className="px-5 py-3 bg-amber-500/10 border-b border-amber-500/20 text-amber-200 text-xs flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3"
+                >
+                  <AlertCircle size={16} className="shrink-0 text-amber-400" />
+                  <div className="flex-1">
+                    Esta conversa foi criada com um identificador temporário do WhatsApp (sem número real).
+                    Envios diretos daqui <strong>não chegam</strong>. Associe ao contato correto
+                    para unificar o histórico, ou apague e aguarde a próxima resposta.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openAssociate}
+                    data-testid="chat-associate-button"
+                    className="shrink-0 h-8 px-3 rounded-md bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition-colors"
+                  >
+                    Associar a um contato
+                  </button>
+                </div>
+              )}
+
               {/* Messages */}
               <div
                 className="flex-1 overflow-y-auto px-5 py-4 space-y-2"
@@ -389,6 +465,70 @@ export default function ChatPage() {
         <MessageCircle size={12} />
         Dica: abra uma instância conectada em <span className="text-neutral-300">Conexões WhatsApp</span> para que suas respostas sejam entregues de verdade.
       </div>
+
+      {/* Associate orphan → contact modal */}
+      {assocOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setAssocOpen(false)}
+          data-testid="chat-associate-modal"
+        >
+          <div
+            className="bg-neutral-950 border border-neutral-800 rounded-lg w-full max-w-md shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-neutral-800">
+              <div className="font-display text-lg font-bold">Associar a um contato</div>
+              <div className="text-xs text-neutral-500 mt-1">
+                Escolha o contato real para onde esta conversa deve ser unificada.
+              </div>
+            </div>
+            <div className="p-4">
+              <input
+                autoFocus
+                value={assocQuery}
+                onChange={(e) => setAssocQuery(e.target.value)}
+                placeholder="Buscar contato por nome ou telefone…"
+                data-testid="chat-associate-search"
+                className="w-full bg-neutral-900 border border-neutral-800 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#25D366]/50"
+              />
+              <div className="mt-3 max-h-72 overflow-y-auto divide-y divide-neutral-900">
+                {filteredContacts.length === 0 ? (
+                  <div className="text-center text-xs text-neutral-500 py-6">
+                    Nenhum contato encontrado. Cadastre em <em>Contatos</em> primeiro.
+                  </div>
+                ) : (
+                  filteredContacts.slice(0, 50).map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => associateTo(c.phone)}
+                      data-testid={`chat-associate-contact-${c.id}`}
+                      className="w-full text-left px-3 py-2 hover:bg-neutral-900 rounded-md flex items-center gap-3 transition-colors"
+                    >
+                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#25D366]/30 to-neutral-800 flex items-center justify-center text-xs font-bold">
+                        {c.name?.[0]?.toUpperCase() || "?"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold truncate">{c.name}</div>
+                        <div className="text-[11px] text-neutral-500 font-mono">{fmtPhone(c.phone)}</div>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-neutral-800 flex justify-end">
+              <button
+                onClick={() => setAssocOpen(false)}
+                className="text-sm text-neutral-400 hover:text-white px-3 py-1.5"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

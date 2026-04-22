@@ -210,11 +210,14 @@ export default function ChatPage() {
               filteredConvs.map((c) => {
                 const active = c.phone === activePhone;
                 return (
-                  <button
+                  <div
                     key={c.phone}
                     onClick={() => setActivePhone(c.phone)}
+                    onKeyDown={(e) => { if (e.key === "Enter") setActivePhone(c.phone); }}
+                    role="button"
+                    tabIndex={0}
                     data-testid={`chat-conv-${c.phone}`}
-                    className={`w-full text-left px-4 py-3 border-b border-neutral-900 transition-colors flex items-start gap-3 ${
+                    className={`w-full text-left px-4 py-3 border-b border-neutral-900 transition-colors flex items-start gap-3 cursor-pointer ${
                       active ? "bg-neutral-900" : "hover:bg-neutral-900/60"
                     }`}
                   >
@@ -226,8 +229,17 @@ export default function ChatPage() {
                         <div className="truncate text-sm font-semibold">
                           {c.name || fmtPhone(c.phone)}
                         </div>
-                        <div className="text-[10px] text-neutral-500 font-mono shrink-0">
-                          {fmtTime(c.last_at)}
+                        <div className="text-[10px] text-neutral-500 font-mono shrink-0 flex items-center gap-2">
+                          <span>{fmtTime(c.last_at)}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => deleteConv(c.phone, e)}
+                            data-testid={`chat-delete-${c.phone}`}
+                            title="Apagar conversa"
+                            className="text-neutral-500 hover:text-red-400 transition-colors p-1 -m-1 rounded hover:bg-red-500/10"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       </div>
                       <div className="flex items-center justify-between gap-2 mt-0.5">
@@ -245,7 +257,7 @@ export default function ChatPage() {
                         )}
                       </div>
                     </div>
-                  </button>
+                  </div>
                 );
               })
             )}
@@ -278,7 +290,7 @@ export default function ChatPage() {
                 <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#25D366]/30 to-neutral-800 flex items-center justify-center text-sm font-bold">
                   {(activeConv?.name || activePhone)?.[0]?.toUpperCase() || "?"}
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="font-semibold truncate" data-testid="chat-header-name">
                     {activeConv?.name || fmtPhone(activePhone)}
                   </div>
@@ -286,6 +298,15 @@ export default function ChatPage() {
                     {fmtPhone(activePhone)}
                   </div>
                 </div>
+                <button
+                  onClick={(e) => deleteConv(activePhone, e)}
+                  data-testid="chat-header-delete"
+                  title="Apagar conversa"
+                  className="h-9 px-3 rounded-md text-neutral-400 hover:text-red-400 hover:bg-red-500/10 border border-neutral-800 hover:border-red-500/30 flex items-center gap-2 text-xs font-semibold transition-colors"
+                >
+                  <Trash2 size={14} />
+                  <span className="hidden sm:inline">Apagar</span>
+                </button>
               </div>
 
               {/* Messages */}

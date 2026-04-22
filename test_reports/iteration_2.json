@@ -1,0 +1,53 @@
+{
+  "summary": "Rewrote backend_test.py to validate the REAL Baileys WhatsApp integration (Node.js sidecar on 127.0.0.1:3001 + FastAPI webhook). 40/40 pytest cases pass (100%). Covers: sidecar /health, session CRUD with 5-instance cap (6th returns 400), real connect endpoint that calls sidecar and produces a real data:image/png;base64 QR via webhook within ~10s, webhook secret enforcement (401 without/wrong X-Webhook-Secret), webhook events qr/connected/logged_out/incoming_message updating DB correctly, DELETE session cleaning /app/whatsapp-sessions/{id}, and full regression on auth/contacts/templates/campaigns/credits/AI.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/whatsapp/webhook (incoming_message)", "issue": "Webhook silently returns {ok:true} when session_id is unknown. Consider logging/returning 404 for visibility when sidecar sends events for orphaned sessions (e.g., auto-restore dirs without DB row)."},
+      {"endpoint": "whatsapp-service/index.js restoreSessions()", "issue": "Auto-restore passes user_id='auto-restore' which does NOT match any DB row; if a creds.json dir exists for a deleted DB session, it will silently reconnect and emit events to a ghost user. Recommend wiping auth dirs for sessions not present in DB at sidecar boot (or query Mongo via a shared endpoint)."},
+      {"endpoint": "POST /api/whatsapp/sessions/{id}/connect", "issue": "On sidecar 5xx we return 502 with message, but DB is left at status=desconectado. OK, but consider also clearing any stale qr_code in the same update (already None, fine)."},
+      {"endpoint": "campaign_runner.py", "issue": "When sidecar refuses send (status != conectado), falls back to simulation which can mark messages 'enviado' even though no real WhatsApp message was delivered. Acceptable while onboarding but should be toggled off in production (env flag)."},
+      {"endpoint": "wa_client.py timeout", "issue": "httpx timeout=30s on /session/start is fine, but webhook to /api/whatsapp/webhook uses axios 5s timeout in Node side — if FastAPI is busy, QR event can be dropped silently."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Recommended) Handle orphan auth dirs in /app/whatsapp-sessions on sidecar boot — compare with DB sessions or call a backend endpoint to validate before auto-restore.",
+    "(Recommended) Add env flag CAMPAIGN_SIMULATE_IF_NOT_CONNECTED=false for production so campaigns fail fast instead of simulating deliveries when session is not truly connected via Baileys.",
+    "(Nice-to-have) Increase Node axios webhook timeout to 10s to avoid dropped QR events under load.",
+    "(Nice-to-have) Split server.py (672 lines, close to 700-line threshold) into routers (auth, contacts, campaigns, whatsapp, ai)."
+  ],
+  "critical_code_review_comments": [
+    "Webhook secret properly validated via X-Webhook-Secret header — confirmed 401 without/with wrong secret.",
+    "MongoDB _id excluded via projection {_id:0} on every read path — verified.",
+    "Real QR code is a proper data:image/png;base64,... URL emitted by Baileys (QRCode.toDataURL), correctly persisted to DB and broadcast via WS with type=session_qr.",
+    "Session limit MAX_SESSIONS_PER_USER=5 enforced at create_session; test confirmed 6th session returns 400.",
+    "DELETE /api/whatsapp/sessions/{id} correctly calls wa_client.delete which hits sidecar and removes /app/whatsapp-sessions/{id} — verified auth dir absent post-delete.",
+    "Webhook event=qr updates status to 'aguardando_qr' and persists the data URL — matches the new Literal in WhatsAppSession model.",
+    "Webhook event=logged_out clears phone_number, qr_code and sets status=desconectado — verified.",
+    "Webhook event=incoming_message updates message status to 'respondido' and increments campaign.replied counter — endpoint reachable and idempotent.",
+    "Node sidecar /health endpoint returns {ok:true, sessions:<n>} — verified alive under supervisor.",
+    "auto-restore with placeholder user_id='auto-restore' is a latent bug (see minor issues).",
+    "campaign_runner fallback to simulation when sidecar rejects send is a semantic hazard for production (mentioned in action items)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (rewritten for real Baileys)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not_tested_per_request"},
+  "test_credentials": "demo@zapflow.com / demo12345 available; tests create per-run TEST_<hex>@zapflow-qa.com users via /api/auth/register (no dependency on demo user).",
+  "seed_data_creation": "Each run creates a fresh user + 1 contact + 1 template + 1 WhatsApp session + 1-2 campaigns; all cleaned up in test_zz_* teardown tests. Baileys auth_info dir /app/whatsapp-sessions/{sid} is created by sidecar during connect and removed by DELETE session.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Real Baileys integration is fully functional. Sidecar on 127.0.0.1:3001 (supervisor program 'whatsapp'). Webhook secret: zapflow-webhook-secret (env WA_WEBHOOK_SECRET). Reuse /app/backend/tests/backend_test.py for regressions (40 tests, ~34s). Do NOT assert real WhatsApp scan — use webhook direct POSTs with X-Webhook-Secret to simulate qr/connected/logged_out/incoming_message events. Only the POST /connect test waits up to 15s for a real QR emitted by Baileys. server.py is at 672 lines, approaching split threshold.",
+  "mocked_apis_confirmed": [
+    "Stripe recharge → MOCKED (direct db.users $set credits)",
+    "Baileys is REAL (Node sidecar running @whiskeysockets/baileys, generating real QR)",
+    "Campaign runner falls back to SIMULATION when session not connected"
+  ],
+  "rca of the issue": "n/a — no regressions; only two latent risks: (1) orphan auth dirs auto-restoring with fake user_id; (2) campaign simulation fallback masking disconnected-session failures. Both documented as action items."
+}

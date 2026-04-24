@@ -1,8 +1,16 @@
+<<<<<<< HEAD
 """Baileys sidecar client: talks to Node.js service on 181.215.134.15:3003."""
 import os
 import httpx
 
 WA_SERVICE_URL = os.environ.get("WA_SERVICE_URL", "http://181.215.134.15:3003")
+=======
+"""Baileys sidecar client: talks to Node.js service on 127.0.0.1:3001."""
+import os
+import httpx
+
+WA_SERVICE_URL = os.environ.get("WA_SERVICE_URL", "http://127.0.0.1:3001")
+>>>>>>> 5d7903a41607f1371af1bd7ac08ea7cd0b3ec847
 WEBHOOK_SECRET = os.environ.get("WA_WEBHOOK_SECRET", "zapflow-webhook-secret")
 
 

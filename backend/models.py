@@ -58,12 +58,15 @@ class TemplateCreate(BaseModel):
     tone: Optional[str] = "venda"  # formal, venda, recuperacao
 
 
+<<<<<<< HEAD
 class TemplateUpdate(BaseModel):
     name: Optional[str] = None
     versions: Optional[List[str]] = None
     tone: Optional[str] = None
 
 
+=======
+>>>>>>> 5d7903a41607f1371af1bd7ac08ea7cd0b3ec847
 class Template(BaseModel):
     id: str = Field(default_factory=uid)
     user_id: str

@@ -3,7 +3,11 @@
  * Exposes HTTP endpoints for session management and sends real-time
  * events (QR, status, message updates) to FastAPI via webhook.
  *
+<<<<<<< HEAD
  * Runs on PORT 3003 (internal only).
+=======
+ * Runs on PORT 3001 (internal only).
+>>>>>>> 5d7903a41607f1371af1bd7ac08ea7cd0b3ec847
  */
 const express = require("express");
 const path = require("path");
@@ -19,9 +23,15 @@ const {
   Browsers,
 } = require("@whiskeysockets/baileys");
 
+<<<<<<< HEAD
 const PORT = process.env.WA_PORT || 3003;
 const SESSIONS_DIR = process.env.WA_SESSIONS_DIR || "/app/whatsapp-sessions";
 const WEBHOOK_URL = process.env.WA_WEBHOOK_URL || "http://0.0.0.0:8000/api/whatsapp/webhook";
+=======
+const PORT = process.env.WA_PORT || 3001;
+const SESSIONS_DIR = process.env.WA_SESSIONS_DIR || "/app/whatsapp-sessions";
+const WEBHOOK_URL = process.env.WA_WEBHOOK_URL || "http://127.0.0.1:8001/api/whatsapp/webhook";
+>>>>>>> 5d7903a41607f1371af1bd7ac08ea7cd0b3ec847
 const WEBHOOK_SECRET = process.env.WA_WEBHOOK_SECRET || "zapflow-webhook-secret";
 
 fs.mkdirSync(SESSIONS_DIR, { recursive: true });
@@ -468,8 +478,13 @@ async function restoreSessions(attempt = 1) {
   }
 }
 
+<<<<<<< HEAD
 app.listen(PORT, "0.0.0.0", async () => {
   console.log(`[zapflow-wa] listening on 0.0.0.0:${PORT}`);
+=======
+app.listen(PORT, "127.0.0.1", async () => {
+  console.log(`[zapflow-wa] listening on 127.0.0.1:${PORT}`);
+>>>>>>> 5d7903a41607f1371af1bd7ac08ea7cd0b3ec847
   console.log(`[zapflow-wa] sessions dir: ${SESSIONS_DIR}`);
   console.log(`[zapflow-wa] webhook: ${WEBHOOK_URL}`);
   await restoreSessions();

@@ -23,7 +23,11 @@ from dotenv import load_dotenv
 from models import (
     UserRegister, UserLogin, UserPublic,
     ContactCreate, Contact,
+<<<<<<< HEAD
     TemplateCreate, TemplateUpdate, Template,
+=======
+    TemplateCreate, Template,
+>>>>>>> 5d7903a41607f1371af1bd7ac08ea7cd0b3ec847
     WhatsAppSessionCreate, WhatsAppSession,
     CampaignCreate, Campaign,
     MessageLog, CreditRecharge, CreditTransaction,
@@ -994,6 +998,7 @@ async def chat_delete_conversation(
     return {"deleted": r.deleted_count}
 
 
+<<<<<<< HEAD
 @api.put("/templates/{tid}", response_model=Template)
 async def update_template(tid: str, data: TemplateUpdate, current=Depends(get_current_user)):
     # 🔎 busca template
@@ -1032,6 +1037,8 @@ async def update_template(tid: str, data: TemplateUpdate, current=Depends(get_cu
     return updated
 
 
+=======
+>>>>>>> 5d7903a41607f1371af1bd7ac08ea7cd0b3ec847
 # ============== WEBSOCKET ==============
 @api.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket, token: str = Query(...)):
@@ -1061,6 +1068,7 @@ app.include_router(api)
 
 app.add_middleware(
     CORSMiddleware,
+<<<<<<< HEAD
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
@@ -1068,6 +1076,15 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+=======
+    allow_credentials=True,
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+>>>>>>> 5d7903a41607f1371af1bd7ac08ea7cd0b3ec847
 @app.on_event("shutdown")
 async def shutdown():
     client.close()

@@ -1,0 +1,46 @@
+{
+  "summary": "Comprehensive backend testing for ZapFlow API. All 40 pytest cases passed (100%) covering auth, dashboard, contacts (incl. CSV PT/EN), templates, WhatsApp sessions (mock QR + auto-connect), campaigns (lifecycle simulation + credits deduction), reports, credits (recharge bounds), and AI endpoints (Claude Sonnet 4.5 + OpenAI TTS). WebSocket /api/ws verified manually (good-token connects, bad-token rejected with 1008).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/whatsapp/sessions/{id}/connect", "issue": "`bg: BackgroundTasks = None` default can NoneType.add_task crash if FastAPI injection ever fails; safer to drop default None"},
+      {"endpoint": "POST /api/auth/register", "issue": "Pydantic EmailStr rejects test TLDs like .test/.local; not a bug but worth noting for future test data"},
+      {"endpoint": "campaign_runner.py", "issue": "`balance_after` in consumo transaction is computed from pre-decrement user['credits'] snapshot instead of post-decrement (off by one) – display only inconsistency"},
+      {"endpoint": "POST /api/credits/recharge", "issue": "No auth on amount type (negative values blocked by <10 check, but 0 or NaN passes amount float – validated acceptable)"}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Tighten campaign_runner balance_after calculation to use post-decrement value",
+    "(Optional) Remove default None on BackgroundTasks param in connect_session for safety"
+  ],
+  "critical_code_review_comments": [
+    "server.py (583 lines) is still under 700 line split threshold but growing — consider splitting into routers (auth/contacts/campaigns/ai) as features grow",
+    "MongoDB _id is properly excluded via projection {_id: 0} throughout - good",
+    "All endpoints use async motor and Depends(get_current_user) for auth - good",
+    "Pydantic validation present on every POST body - good",
+    "Credits deduction is properly isolated per user inside campaign_runner",
+    "Mock flows clearly labeled (QR pattern generation, auto-connect 8s timer, recharge direct balance update, message lifecycle simulation)",
+    "WebSocket auth via query param token is acceptable for SaaS preview"
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (new)",
+    "/app/backend/tests/conftest.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not_tested"},
+  "test_credentials": "Pre-existing demo user demo@zapflow.com / demo12345 was NOT used because backend testing creates fresh TEST_ users per-run. Fresh users auto-get R$25 welcome bonus.",
+  "seed_data_creation": "Each test run creates a unique TEST user (test_<hex>@zapflow-qa.com) plus several contacts/templates/session/campaign that are cleaned up at end of run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend is fully green (40/40 pytest + WS smoke test). Reuse /app/backend/tests/backend_test.py for regressions. EMERGENT_LLM_KEY is working — ai_suggest returned parsed variations and ai_tts returned non-empty base64 audio. WhatsApp simulate_connection auto-connects in 8s (tests sleep 9s). Campaign simulation produces messages with status progressing to enviado/entregue/lido/respondido via background tasks — tests sleep 10s after start. Frontend testing still pending.",
+  "mocked_apis_confirmed": [
+    "WhatsApp Baileys → MOCKED (22x22 binary QR pattern, auto-connect 8s)",
+    "Stripe recharge → MOCKED (direct db.users $set credits)",
+    "Message delivery → MOCKED (async lifecycle with random delays, 5% failure, 70% read, 25% reply rates)"
+  ]
+}

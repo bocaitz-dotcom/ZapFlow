@@ -1,0 +1,132 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) - Control Room Variant",
+  "domain": "SaaS Dashboard for WhatsApp Bulk Messaging",
+  "global_philosophy": "Precision, performance, and trust. The UI must feel like a high-end command center (Linear/Vercel style). 95% of the UI is monochrome (deep obsidian, varying neutral greys, pure white). Color is strictly functional: 'WhatsApp Green' is reserved EXCLUSIVELY for active states, delivery success, and connection status. No purple/violet AI slop. No default SaaS blue.",
+  "colors": {
+    "backgrounds": {
+      "app_bg": "bg-neutral-950",
+      "surface_default": "bg-neutral-900",
+      "surface_elevated": "bg-neutral-800/50",
+      "surface_glass": "bg-neutral-950/70 backdrop-blur-xl",
+      "whatsapp_chat_bg": "bg-[#0b141a]"
+    },
+    "borders": {
+      "default": "border-neutral-800",
+      "hover": "border-neutral-700",
+      "focus": "ring-1 ring-white/50"
+    },
+    "text": {
+      "primary": "text-neutral-50",
+      "secondary": "text-neutral-400",
+      "muted": "text-neutral-600",
+      "inverse": "text-neutral-950"
+    },
+    "brand_accents": {
+      "primary": "bg-white text-neutral-950",
+      "primary_hover": "hover:bg-neutral-200",
+      "whatsapp_green": "text-[#25D366] bg-[#25D366]/10 border border-[#25D366]/20",
+      "danger": "text-red-500 bg-red-500/10",
+      "warning": "text-amber-500 bg-amber-500/10"
+    }
+  },
+  "typography": {
+    "fonts": {
+      "headings": "'Cabinet Grotesk', sans-serif",
+      "body": "'Satoshi', sans-serif",
+      "mono": "'JetBrains Mono', monospace"
+    },
+    "scales": {
+      "h1_hero": "text-4xl sm:text-5xl font-black tracking-tighter leading-tight",
+      "h2_section": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3_card": "text-lg font-semibold tracking-tight",
+      "body": "text-sm sm:text-base font-medium leading-relaxed",
+      "overline": "text-xs font-bold uppercase tracking-[0.2em] text-neutral-500"
+    },
+    "rules": [
+      "Headings MUST use tight tracking (tracking-tight or tracking-tighter).",
+      "Never use Inter for headings.",
+      "Use JetBrains Mono for metrics numbers, IDs, and variables in the message editor."
+    ]
+  },
+  "spacing_and_layout": {
+    "grid_system": {
+      "dashboard_mode": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+      "form_mode": "grid-cols-1 md:grid-cols-2 gap-8"
+    },
+    "spacing_scale": {
+      "container_padding": "p-6 md:p-8 lg:p-12",
+      "card_padding": "p-5 md:p-6",
+      "section_gap": "gap-12 lg:gap-16"
+    },
+    "structural_rules": [
+      "Sidebar: Fixed width (w-64 or w-72), h-screen, border-r border-neutral-800.",
+      "Main Content: flex-1, overflow-y-auto, min-h-screen, bg-neutral-950.",
+      "Optical Alignment: Ensure icon+text inside buttons is visually centered.",
+      "Grid Children: Grid items MUST be direct children of the grid container."
+    ]
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-white text-neutral-950 font-bold hover:bg-neutral-200 transition-colors px-6 py-2.5 rounded-md",
+      "secondary": "bg-neutral-900 border border-neutral-800 text-neutral-50 hover:bg-neutral-800 transition-colors px-6 py-2.5 rounded-md",
+      "ghost": "bg-transparent text-neutral-400 hover:text-neutral-50 hover:bg-neutral-800/50 transition-colors px-4 py-2 rounded-md"
+    },
+    "cards": {
+      "metric": "bg-neutral-900/50 border border-neutral-800 rounded-lg p-6 flex flex-col justify-between hover:-translate-y-1 hover:border-neutral-700 transition-all duration-300",
+      "standard": "bg-neutral-900 border border-neutral-800 rounded-lg p-6"
+    },
+    "inputs": {
+      "text": "bg-neutral-950 border border-neutral-800 rounded-md px-4 py-2.5 text-neutral-50 focus:outline-none focus:ring-1 focus:ring-white/50 focus:border-white/50 transition-all placeholder:text-neutral-600",
+      "textarea": "bg-neutral-950 border border-neutral-800 rounded-md px-4 py-3 text-neutral-50 focus:outline-none focus:ring-1 focus:ring-white/50 focus:border-white/50 min-h-[120px] resize-y"
+    },
+    "whatsapp_chat_preview": {
+      "container": "bg-[#0b141a] border border-neutral-800 rounded-xl overflow-hidden flex flex-col h-full",
+      "header": "bg-[#202c33] px-4 py-3 flex items-center gap-3 border-b border-neutral-800",
+      "message_outgoing": "bg-[#005c4b] text-white p-3 rounded-lg rounded-tr-none self-end max-w-[85%] text-sm shadow-sm",
+      "message_incoming": "bg-[#202c33] text-white p-3 rounded-lg rounded-tl-none self-start max-w-[85%] text-sm shadow-sm",
+      "variables": "bg-black/20 px-1.5 py-0.5 rounded text-[#00E676] font-mono text-xs"
+    },
+    "tables": {
+      "container": "w-full text-left text-sm",
+      "header": "border-b border-neutral-800 bg-neutral-900/50 text-neutral-400 font-medium",
+      "row": "border-b border-neutral-800/50 hover:bg-neutral-900/30 transition-colors",
+      "cell": "py-4 px-4"
+    }
+  },
+  "micro_interactions": {
+    "hover_states": "All interactive elements must explicitly define hover text and background colors (e.g., hover:bg-neutral-800 hover:text-white).",
+    "focus_states": "Inputs and buttons must use high-contrast focus rings (focus:ring-1 focus:ring-white/50).",
+    "transitions": "Use specific transition properties: transition-colors duration-200 ease-in-out or transition-transform for lifts."
+  },
+  "accessibility": {
+    "contrast": "Text against backgrounds must pass WCAG AA. Lighter gray text (text-neutral-400) is for secondary info; critical info must be text-neutral-50.",
+    "aria": "Use aria-hidden='true' for decorative icons.",
+    "focus": "Keyboard navigation must not be trapped. Focus states must be visible."
+  },
+  "media": {
+    "rules": "DO NOT use placeholder image URLs like via.placeholder.com. Use the URLs provided below or Phosphor/Lucide icons.",
+    "urls": {
+      "login_background": "https://images.unsplash.com/photo-1770745560263-a8fc696de90b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwyfHxkYXJrJTIwYWJzdHJhY3QlMjB0ZXh0dXJlfGVufDB8fHx8MTc3NjczMTUzNXww&ixlib=rb-4.1.0&q=85",
+      "avatars": [
+        "https://images.pexels.com/photos/36053652/pexels-photo-36053652.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "https://images.unsplash.com/photo-1657180881998-c8a03ef22695?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNzl8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBhdmF0YXIlMjBwb3J0cmFpdHxlbnwwfHx8fDE3NzY3MzE1MjF8MA&ixlib=rb-4.1.0&q=85"
+      ],
+      "qr_code_placeholder": "Use a generated SVG pattern or an explicitly designed purely CSS/Tailwind grid to simulate a QR code. Do not load a generic image for QR."
+    }
+  },
+  "testing": {
+    "attributes": "All interactive elements (buttons, inputs, specific table rows, nav links) MUST include a 'data-testid' attribute (e.g., data-testid='login-submit-button', data-testid='sidebar-campaigns-link')."
+  },
+  "instructions_to_main_agent": [
+    "1. Initialize the app with the dark theme colors explicitly mapped in tailwind.config.js (neutral-950 as app bg).",
+    "2. Add Fontshare imports for 'Cabinet Grotesk' and 'Satoshi' in index.css. Apply them to headings and body respectively.",
+    "3. Build a fixed Sidebar Layout (Layout.js) with standard navigation (Dashboard, Campaigns, Contacts, Templates, Connections, Credits, Settings).",
+    "4. Construct the Dashboard screen using the 'Control Room' grid (grid-cols-4 for top metrics). Use Recharts for the delivery/failure graphs.",
+    "5. Create the 'New Campaign' flow which includes a split layout: Form/Variables on the left, and the 'whatsapp_chat_preview' component on the right simulating real-time rendering.",
+    "6. Build the WhatsApp Connections screen featuring a 'Connect' button that reveals a simulated QR code scanning interface.",
+    "7. Implement Shadcn UI components for Tables (Campaign List, Contacts) and dropdowns, but heavily override their styles to match the border-neutral-800 and pure white/black button aesthetic.",
+    "8. Ensure every single button, form, and interactable metric card has a data-testid attribute.",
+    "9. Do NOT use purple/violet gradients for AI features; use a sleek subtle glow (like pure white drop-shadow or border) with a Sparkle icon to indicate AI suggestions."
+  ]
+}

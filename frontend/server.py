@@ -10,7 +10,6 @@ import random
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
-from bson import ObjectId
 
 from fastapi import (
     FastAPI, APIRouter, Depends, HTTPException, UploadFile, File,
@@ -29,8 +28,7 @@ from models import (
     CampaignCreate, Campaign,
     MessageLog, CreditRecharge, CreditTransaction,
     AISuggestRequest, TTSRequest, CSVImportResult,
-    ChatMessage, ChatSendRequest, DirectSendByNameRequest,
-    KanbanColumnCreate, KanbanColumnUpdate, KanbanMoveRequest, KanbanCardUpdate,
+    ChatMessage, ChatSendRequest,
     uid, now_iso,
 )
 from auth import (
@@ -59,6 +57,7 @@ api = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("zapflow")
+
 
 # ============== AUTH ==============
 @api.post("/auth/register")
@@ -199,11 +198,6 @@ def normalize_phone(raw: str) -> Optional[str]:
         digits = "55" + digits
     if len(digits) < 12 or len(digits) > 13:
         return None
-    # Promote old 8-digit Brazilian mobile to 9-digit canonical form.
-    # Rule: 55 + DDD(2) + 8 local digits starting with 9 → insert extra 9.
-    # e.g. 55-99-9203-4994 (12) → 55-99-9-9203-4994 (13), same as 55-99-99203-4994.
-    if len(digits) == 12 and digits[4] == "9":
-        digits = digits[:4] + "9" + digits[4:]
     return digits
 
 
@@ -243,7 +237,7 @@ async def resolve_canonical_phone(db, user_id: str, incoming: str) -> str:
     ).to_list(5000)
     for c in contacts:
         if _phone_last10(c.get("phone") or "") == key:
-            return normalize_phone(c["phone"]) or c["phone"]
+            return c["phone"]
 
     # 2. Any outgoing campaign/chat message we already sent to this number
     # scan a bounded set (cheap for demo volumes)
@@ -252,14 +246,14 @@ async def resolve_canonical_phone(db, user_id: str, incoming: str) -> str:
     ).to_list(10000)
     for m in camp_msgs:
         if _phone_last10(m.get("contact_phone") or "") == key:
-            return normalize_phone(m["contact_phone"]) or m["contact_phone"]
+            return m["contact_phone"]
 
     chat_msgs = await db.chat_messages.find(
         {"user_id": user_id, "direction": "out"}, {"_id": 0, "phone": 1},
     ).to_list(10000)
     for m in chat_msgs:
         if _phone_last10(m.get("phone") or "") == key:
-            return normalize_phone(m["phone"]) or m["phone"]
+            return m["phone"]
 
     return normalize_phone(incoming) or incoming
 
@@ -281,9 +275,6 @@ async def create_contact(data: ContactCreate, current=Depends(get_current_user))
     phone = normalize_phone(data.phone)
     if not phone:
         raise HTTPException(400, "Telefone inválido. Use formato 55DDDNUMERO")
-    existing = await db.contacts.find_one({"user_id": current["id"], "phone": phone})
-    if existing:
-        raise HTTPException(409, "Contato com este telefone já existe")
     contact = Contact(
         user_id=current["id"], name=data.name, phone=phone,
         vehicle=data.vehicle, service=data.service,
@@ -308,12 +299,6 @@ async def import_csv(file: UploadFile = File(...), current=Depends(get_current_u
     imported = skipped = 0
     errors: List[str] = []
     bulk = []
-    existing_phones = {
-        c["phone"]
-        for c in await db.contacts.find(
-            {"user_id": current["id"]}, {"_id": 0, "phone": 1}
-        ).to_list(100000)
-    }
     for row in reader:
         norm = {k.strip().lower(): v for k, v in row.items() if k}
         name = (norm.get("name") or norm.get("nome") or "").strip()
@@ -323,10 +308,6 @@ async def import_csv(file: UploadFile = File(...), current=Depends(get_current_u
             if len(errors) < 5:
                 errors.append(f"Linha inválida: {row}")
             continue
-        if phone in existing_phones:
-            skipped += 1
-            continue
-        existing_phones.add(phone)
         bulk.append({
             "id": uid(),
             "user_id": current["id"],
@@ -441,26 +422,24 @@ async def delete_session(sid: str, current=Depends(get_current_user)):
         log.warning(f"Baileys delete warn: {e}")
     return {"ok": True}
 
+import json
+
 # ============== WHATSAPP WEBHOOK (from Node.js sidecar) ==============
 @api.post("/whatsapp/webhook")
 async def whatsapp_webhook(
     request: Request,
     x_webhook_secret: Optional[str] = Header(default=None),
 ):
-
     if x_webhook_secret != WEBHOOK_SECRET:
         raise HTTPException(401, "Invalid webhook secret")
     payload = await request.json()
+
+    log.info("========== WHATSAPP WEBHOOK RECEBIDO ==========")
+    log.info(json.dumps(payload, indent=2, ensure_ascii=False))
+    log.info("===============================================")
+
     event = payload.get("event")
     sid = payload.get("session_id")
-    message_id = payload.get("message_id")
-    chat_doc = None
-
-    existing_message = await db.chat_messages.find_one(
-            {"message_id": message_id},
-            {"_id": 0}
-        )
-
     if not sid:
         return {"ok": True}
 
@@ -500,115 +479,6 @@ async def whatsapp_webhook(
         await manager.send_to_user(real_user_id, {
             "type": "session_status", "session_id": sid, "status": new_status,
         })
-    elif event == "log_console":
-
-     chat_doc = payload.get("messages")
-     
-    if not isinstance(chat_doc, dict):
-        chat_doc = {}
-
-    message_id = chat_doc.get("message_id") if isinstance(chat_doc, dict) else None
-    status = chat_doc.get("status") if isinstance(chat_doc, dict) else None
-
-    print("DEBUG chat_doc:", chat_doc)
-    print("DEBUG msg_id:", message_id)
-    print("DEBUG status:", status)
-
-    await manager.send_to_user(real_user_id, {
-        "type": "chat_console",
-        "message_id": message_id,
-        "message": chat_doc,
-        "GET": "/whatsapp/webhook",
-    })
-
-    raw_from = chat_doc.get("from_raw") if isinstance(chat_doc, dict) else None
-
-    number_in = None
-    if isinstance(raw_from, str) and "@" in raw_from:
-        number_in = raw_from.split("@", 1)[0]
-
-    canonical = await resolve_canonical_phone(db, real_user_id, number_in)
-
-    # ✅ Extrai mídia (pode ser áudio, vídeo, foto, arquivo)
-    media_content = None
-    media_type = None
-    
-    if isinstance(chat_doc, dict):
-
-        content_obj = chat_doc.get("content", {})
-
-        if isinstance(content_obj, dict):
-            # Verifica qual tipo de mídia tem
-            if content_obj.get("text"):
-                media_type = "text"
-                media_content = content_obj.get("text")
-            elif content_obj.get("audio"):
-                media_type = "audio"
-                media_content = content_obj.get("audio")
-            elif content_obj.get("video"):
-                media_type = "video"
-                media_content = content_obj.get("video")
-            elif content_obj.get("image"):
-                media_type = "image"
-                media_content = content_obj.get("image")
-            elif content_obj.get("document"):
-                media_type = "document"
-                media_content = content_obj.get("document")
-            elif content_obj.get("file"):
-                media_type = "file"
-                media_content = content_obj.get("file")
-    
-    # ✅ Também tenta content direto (fallback)
-    content_text = chat_doc.get("content") if isinstance(chat_doc, dict) else None
-    if isinstance(content_text, str):
-        media_content = content_text
-
-    # ✅ Persiste a mensagem no banco se tiver conteúdo E numero canonizado
-    if (media_content or content_text) and canonical and message_id:
-        from_me = chat_doc.get("from_me", False) if isinstance(chat_doc, dict) else False
-        push_name = chat_doc.get("push_name") if isinstance(chat_doc, dict) else None
-
-        chat_message = ChatMessage(
-            user_id=real_user_id,
-            session_id=sid,
-            phone=canonical,
-            name=push_name,
-            direction="out" if from_me else "in",
-            content=media_content or content_text or "[Mídia]",
-            media=media_content,  # ✅ salva a URL
-            media_type=media_type,  # ✅ salva a URL
-            status=status or "entregue",
-            read=False,
-            message_id=message_id,
-        ).model_dump()
-
-        existing_message = await db.chat_messages.find_one(
-            {"message_id": message_id},
-            {"_id": 0}
-        )
-
-        if not existing_message:
-            await db.chat_messages.insert_one(dict(chat_message))
-            
-            await manager.send_to_user(real_user_id, {
-                "type": "chat_incoming",
-                "message": chat_message,
-            })
-
-    # ✅ Atualiza status se houver message_id válido
-    if message_id and status and message_id != "0":
-        await db.chat_messages.update_one(
-            {
-                "message_id": message_id,
-                "status": {"$ne": "lido"}
-            },
-            {
-                "$set": {
-                    "status": status
-                }
-            }
-        )
-      
 
     elif event == "lid_mapping":
         # Node sidecar resolved a LID -> phone. Persist and retroactively merge
@@ -641,7 +511,6 @@ async def whatsapp_webhook(
         raw_from = payload.get("from") or ""
         raw_lid = payload.get("from_raw") or raw_from
         push_name = payload.get("push_name")
-        from_me = payload.get("from_me", False)
         number_in = raw_from.split("@")[0]
         text = (payload.get("text") or "").strip()
         canonical = await resolve_canonical_phone(db, real_user_id, number_in)
@@ -656,46 +525,11 @@ async def whatsapp_webhook(
                     {"$set": {"phone": canonical}},
                 )
 
-        # Try to find the contact name (if any); match on last-10 to handle
-        # stored contacts that still have the old 12-digit format.
-        key10 = _phone_last10(canonical)
-        contact = None
-        async for c in db.contacts.find({"user_id": real_user_id}, {"_id": 0, "name": 1, "phone": 1}):
-            if _phone_last10(c.get("phone") or "") == key10:
-                contact = c
-                break
+        # Try to find the contact name (if any)
+        contact = await db.contacts.find_one(
+            {"user_id": real_user_id, "phone": canonical}, {"_id": 0, "name": 1}
+        )
         name = contact["name"] if contact else push_name
-        media = (payload.get("media") or "").strip()
-
-        await manager.send_to_user(real_user_id, {
-                "type": "incoming_message",
-                "message_id": message_id,
-                "message": payload,
-                "GET": "/whatsapp/webhook",
-            })
-
-        content_obj = payload.get("content", {})
-
-        if isinstance(content_obj, dict):
-            # Verifica qual tipo de mídia tem
-            if content_obj.get("text"):
-                media_type = "text"
-                media_content = content_obj.get("text")
-            elif content_obj.get("audio"):
-                media_type = "audio"
-                media_content = content_obj.get("audio")
-            elif content_obj.get("video"):
-                media_type = "video"
-                media_content = content_obj.get("video")
-            elif content_obj.get("image"):
-                media_type = "image"
-                media_content = content_obj.get("image")
-            elif content_obj.get("document"):
-                media_type = "document"
-                media_content = content_obj.get("document")
-            elif content_obj.get("file"):
-                media_type = "file"
-                media_content = content_obj.get("file")
 
         # Persist incoming chat message
         if text and canonical:
@@ -704,21 +538,16 @@ async def whatsapp_webhook(
                 session_id=sid,
                 phone=canonical,
                 name=name,
-                direction="out" if from_me else "in",
+                direction="in",
                 content=text,
-                media_type=media_type,
-                media=media,
                 status="entregue",
                 read=False,
-                message_id=message_id,
             ).model_dump()
-
-            if not existing_message:
-               await db.chat_messages.insert_one(dict(chat_doc))
-               await manager.send_to_user(real_user_id, {
-                   "type": "chat_incoming",
-                   "message": chat_doc,
-               })
+            await db.chat_messages.insert_one(dict(chat_doc))
+            await manager.send_to_user(real_user_id, {
+                "type": "chat_incoming",
+                "message": chat_doc,
+            })
 
         # Existing behavior: mark campaign msgs as responded
         if canonical:
@@ -876,125 +705,6 @@ async def recharge(data: CreditRecharge, current=Depends(get_current_user)):
     return {"credits": new_bal, "transaction": tx}
 
 
-from bson import ObjectId
-
-@api.post("/scheduler/create")
-async def create_job(data: dict):
-
-    user_id = data.get("user_id")
-    schedule_at = data.get("schedule_at")
-    payload = data.get("payload", {}) or {}
-
-    instance_name = payload.get("instance_name")
-    template_name = payload.get("template_name")
-    phone = payload.get("phone")
-
-    instance_name = payload.get("instance_name")
-    template_name = payload.get("template_name")
-
-    if not user_id:
-        return {"error": "user_id obrigatório"}
-
-    # valida se usuário existe
-    user = await db.users.find_one({"id": user_id})
-
-    if not user:
-        return {"error": "user_id inválido"}
-
-     # ✔ TEMPLATE DO MESMO USER
-    template = await db.templates.find_one({
-        "user_id": user_id,
-        "name": template_name
-    })
-    if not template:
-        return {"error": f"Template '{template_name}' não existe para este usuário"}
-
-    # ✔ INSTANCE DO MESMO USER
-    instance = await db.whatsapp_sessions.find_one({
-        "user_id": user_id,
-        "name": instance_name
-    })
-    if not instance:
-        return {"error": f"Instance '{instance_name}' não existe para este usuário"}
-
-
-    # ✔ NÃO DEIXA DUPLICAR PARA O MESMO CONTATO
-    scheduled = await db.scheduled_jobs.find_one({
-        "user_id": user_id,
-        "payload.phone": phone,
-        "status": "pending"
-    })
-
-    if scheduled:
-        return {"error": f"Já existe um agendamento para o telefone {phone}"}
-
-    Tscheduled = await db.scheduled_jobs.find_one({
-        "user_id": user_id,
-        "payload.phone": phone,
-        "payload.template_name": template_name
-    })
-
-    if Tscheduled:
-        return {"error": f"Já Foi enviado esse template para o telefone {phone}"}
-
-
-    job = {
-        "id": uid(),
-        "user_id": user_id,
-        "schedule_at": schedule_at,
-        "payload": payload,
-        "status": "pending",
-        "created_at": now_iso(),
-    }
-
-    await db.scheduled_jobs.insert_one(job)
-
-    return {**job, "_id": None}
-
-
-
-@api.get("/scheduler/list")
-async def list_jobs(current=Depends(get_current_user)):
-    jobs = []
-    async for j in db.scheduled_jobs.find(
-        {"user_id": current["id"]}  # 🔥 FILTRO DE DONO
-    ).sort("created_at", -1):
-        j["id"] = str(j["_id"])
-        j["_id"] = None
-        jobs.append(j)
-
-    return jobs
-
-
-@api.delete("/scheduler/{id}")
-async def delete_job(id: str, current=Depends(get_current_user)):
-
-    # tenta pelo id custom primeiro
-    r = await db.scheduled_jobs.delete_one({
-        "id": id,
-        "user_id": current["id"]
-    })
-
-    if r.deleted_count > 0:
-        return {"ok": True}
-
-    # fallback caso tenha sido salvo com _id do Mongo
-    try:
-        r2 = await db.scheduled_jobs.delete_one({
-            "_id": ObjectId(id),
-            "user_id": current["id"]
-        })
-
-        if r2.deleted_count == 0:
-            raise HTTPException(404, "Job não encontrado")
-
-    except Exception:
-        raise HTTPException(404, "Job não encontrado")
-
-    return {"ok": True}
-
-
-
 # ============== AI ==============
 @api.post("/ai/suggest")
 async def ai_suggest(data: AISuggestRequest, current=Depends(get_current_user)):
@@ -1083,14 +793,11 @@ async def chat_conversations(current=Depends(get_current_user)):
     camp_msgs = await db.messages.find(
         {"user_id": uid_, "status": {"$ne": "pendente"}},
         {"_id": 0, "contact_phone": 1, "contact_name": 1,
-         "content": 1, "sent_at": 1, "created_at": 1, "session_id": 1, "media": 1},
+         "content": 1, "sent_at": 1, "created_at": 1, "session_id": 1},
     ).to_list(20000)
 
     convs: dict = {}
-    def bump(phone, name, content, ts, direction, unread_inc=0, session_id=None, media=None):
-            
-        print("DEBUG media_type:", media)
-
+    def bump(phone, name, content, ts, direction, unread_inc=0, session_id=None):
         if not phone:
             return
         c = convs.setdefault(phone, {
@@ -1142,11 +849,6 @@ async def chat_messages(
             "id": m["id"],
             "direction": m.get("direction", "in"),
             "content": m.get("content", ""),
-            "TOname": m.get("name", ""),
-            "FROMname": m.get("to_name", ""),
-            "media": m.get("media", ""),
-            "media_type": m.get("media_type", ""),
-            "message_id": m.get("message_id", ""),
             "created_at": m.get("created_at"),
             "status": m.get("status", "enviado"),
             "source": "chat",
@@ -1162,11 +864,6 @@ async def chat_messages(
             "id": m["id"],
             "direction": "out",
             "content": m.get("content", ""),
-            "TOname": m.get("name", ""),
-            "FROMname": m.get("to_name", ""),
-            "media": m.get("media", ""),
-            "media_type": m.get("media_type", ""),
-            "message_id": m.get("message_id", ""),
             "created_at": m.get("sent_at") or m.get("created_at"),
             "status": m.get("status", "enviado"),
             "source": "campaign",
@@ -1186,169 +883,6 @@ async def chat_mark_read(
         {"$set": {"read": True}},
     )
     return {"updated": r.modified_count}
-
-
-@api.post("/chat/send-by-instance")
-async def chat_send_by_instance(data: DirectSendByNameRequest):
-
-    session = await db.whatsapp_sessions.find_one(
-        {
-            "user_id": data.user_id,
-            "name": data.instance_name,
-            "status": "conectado"
-        },
-        {"_id": 0}
-    )
-
-    if not session:
-        raise HTTPException(404, "Instância não encontrada ou desconectada")
-
-    session_id = session["id"]
-
-    raw_phone = re.sub(r"\D", "", data.phone or "")
-    phone = normalize_phone(raw_phone) or raw_phone
-
-    # ===== texto =====
-    if data.template_name:
-        template = await db.templates.find_one(
-            {"user_id": data.user_id, "name": data.template_name},
-            {"_id": 0}
-        )
-        if not template:
-            raise HTTPException(404, "Template não encontrado")
-
-        versions = template.get("versions") or []
-        text = random.choice(versions) if versions else ""
-    else:
-        text = data.text or ""
-
-    # ===== render =====
-    context = {
-        "nome": data.name,
-        "telefone": phone,
-        "veiculo": getattr(data, "veiculo", None),
-        "placa": getattr(data, "placa", None),
-        "servico": getattr(data, "servico", None),
-        "procedimento": getattr(data, "procedimento", None),
-        "dentista": getattr(data, "dentista", None),
-        "horario": getattr(data, "horario", None),
-        "data": getattr(data, "data", None),
-        "empresa": getattr(data, "empresa", None),
-        "cidade": getattr(data, "cidade", None),
-        "valor": getattr(data, "valor", None),
-        "desconto": getattr(data, "desconto", None),
-    }
-
-    def render(t):
-        return re.sub(r"\{(\w+)\}", lambda m: str(context.get(m.group(1)) or ""), t)
-
-    text = render(text)
-
-    msg_id = uid()
-
-    msg_doc = {
-        "id": msg_id,
-        "user_id": data.user_id,
-        "session_id": session_id,
-        "contact_phone": phone,
-        "contact_name": data.name,
-        "content": text,
-        "status": "pendente",
-        "created_at": now_iso(),
-        "sent_at": None,
-    }
-
-    await db.messages.insert_one(msg_doc)
-
-    status = "enviado"
-    error = None
-
-    try:
-        wa_response = await wa_client.send_text(session_id, phone, text)
-
-        wa_message_id = wa_response.get("message_id")
-
-        await db.messages.update_one(
-            {"id": msg_id},  # seu id interno
-            {
-                "$set": {
-                    "status": "enviado",
-                    "sent_at": now_iso(),
-                    "message_id": wa_message_id,  # ⭐ SALVA A CHAVE DO WHATSAPP
-                }
-            }
-        )
-
-    except Exception as e:
-        status = "falha"
-        error = str(e)
-
-        await db.messages.update_one(
-            {"id": msg_id},
-            {"$set": {"status": "falha", "error": error}}
-        )
-
-    # ===== websocket =====
-    await manager.send_to_user(data.user_id, {
-        "type": "message_update",
-        "message_id": msg_id,
-        "status": status,
-        "phone": phone
-    })
-
-    # ===== lifecycle igual campanha =====
-    if status == "enviado":
-        asyncio.create_task(_instance_lifecycle(data.user_id, msg_id))
-
-    return {
-        "ok": status == "enviado",
-        "status": status,
-        "message_id": msg_id,
-        "error": error
-    }
-
-async def _instance_lifecycle(user_id: str, message_id: str):
-
-    await asyncio.sleep(random.uniform(1, 3))
-
-    await db.messages.update_one(
-        {"id": message_id},
-        {"$set": {"status": "entregue"}}
-    )
-
-    await manager.send_to_user(user_id, {
-        "type": "message_update",
-        "message_id": message_id,
-        "status": "entregue"
-    })
-
-    if random.random() < 0.7:
-        await asyncio.sleep(random.uniform(2, 5))
-
-        await db.messages.update_one(
-            {"id": message_id},
-            {"$set": {"status": "lido"}}
-        )
-
-        await manager.send_to_user(user_id, {
-            "type": "message_update",
-            "message_id": message_id,
-            "status": "lido"
-        })
-
-        if random.random() < 0.25:
-            await asyncio.sleep(random.uniform(3, 6))
-
-            await db.messages.update_one(
-                {"id": message_id},
-                {"$set": {"status": "respondido"}}
-            )
-
-            await manager.send_to_user(user_id, {
-                "type": "message_update",
-                "message_id": message_id,
-                "status": "respondido"
-            })
 
 
 @api.post("/chat/send")
@@ -1382,15 +916,9 @@ async def chat_send(data: ChatSendRequest, current=Depends(get_current_user)):
 
     status = "enviado"
     error = None
-    result ='0'
-    message_id = '0'
-
     if session_id:
         try:
-           result =  await wa_client.send_text(session_id, phone, data.text)
-           print("SEND RESULT:", result)
-           message_id = result.get("message_id")
-
+            await wa_client.send_text(session_id, phone, data.text)
         except Exception as e:
             status = "falha"
             error = str(e)
@@ -1406,7 +934,7 @@ async def chat_send(data: ChatSendRequest, current=Depends(get_current_user)):
     # Persist the outgoing message under the canonical (resolved) phone so it
     # stays in the same conversation thread, even if the UI still had the LID.
     chat_doc = ChatMessage(
-        user_id=current["id"], 
+        user_id=current["id"],
         session_id=session_id,
         phone=phone,
         name=name,
@@ -1414,24 +942,9 @@ async def chat_send(data: ChatSendRequest, current=Depends(get_current_user)):
         content=data.text,
         status=status,
         read=True,
-        message_id=message_id,# 🔥 AQUI
     ).model_dump()
+    await db.chat_messages.insert_one(dict(chat_doc))
 
-    await manager.send_to_user(current["id"], {
-                "type": "chat_console",
-                "message": chat_doc,
-                "message_id": message_id,
-                "GET": '/chat/send',
-            })
-
-    existing_message = await db.chat_messages.find_one(
-        {"message_id": message_id},
-        {"_id": 0}
-    )
-
-    if not existing_message:
-     await db.chat_messages.insert_one(dict(chat_doc))
- 
     # If the caller still had the LID open, also migrate any past chat_messages
     # keyed to the LID into the resolved phone thread so the UI unifies.
     if raw_phone and raw_phone != phone:
@@ -1525,212 +1038,6 @@ async def update_template(tid: str, data: TemplateUpdate, current=Depends(get_cu
     return updated
 
 
-# ============== KANBAN ==============
-
-@api.get("/kanban/board")
-async def kanban_board(current=Depends(get_current_user)):
-    uid_ = current["id"]
-
-    # Reuse conversations logic from /chat/conversations
-    chat_msgs = await db.chat_messages.find({"user_id": uid_}, {"_id": 0}).to_list(20000)
-    camp_msgs = await db.messages.find(
-        {"user_id": uid_, "status": {"$ne": "pendente"}},
-        {"_id": 0, "contact_phone": 1, "contact_name": 1,
-         "content": 1, "sent_at": 1, "created_at": 1, "session_id": 1},
-    ).to_list(20000)
-
-    convs: dict = {}
-
-    def bump(phone, name, content, ts, direction, unread_inc=0, session_id=None):
-        if not phone:
-            return
-        phone = normalize_phone(phone) or phone  # merge 12-digit and 13-digit variants
-        c = convs.setdefault(phone, {
-            "phone": phone, "name": name, "last_message": "",
-            "last_direction": "out", "last_at": "", "unread": 0,
-            "session_id": session_id,
-        })
-        if name and not c["name"]:
-            c["name"] = name
-        if session_id and not c.get("session_id"):
-            c["session_id"] = session_id
-        if ts and ts > (c["last_at"] or ""):
-            c["last_at"] = ts
-            c["last_message"] = content or ""
-            c["last_direction"] = direction
-        c["unread"] += unread_inc
-
-    for m in chat_msgs:
-        unread_inc = 1 if (m.get("direction") == "in" and not m.get("read")) else 0
-        bump(m.get("phone"), m.get("name"), m.get("content"),
-             m.get("created_at"), m.get("direction", "in"),
-             unread_inc=unread_inc, session_id=m.get("session_id"))
-
-    for m in camp_msgs:
-        ts = m.get("sent_at") or m.get("created_at")
-        bump(m.get("contact_phone"), m.get("contact_name"),
-             m.get("content"), ts, "out", session_id=m.get("session_id"))
-
-    # Custom columns
-    columns = await db.kanban_columns.find(
-        {"user_id": uid_}, {"_id": 0}
-    ).sort("position", 1).to_list(100)
-
-    # Card metadata (custom_name, color, flagged, column_id)
-    cards = await db.kanban_cards.find({"user_id": uid_}, {"_id": 0}).to_list(10000)
-    cards_map = {(normalize_phone(c["phone"]) or c["phone"]): c for c in cards}
-
-    # Build by_column
-    by_column: dict = {"inbox": []}
-    for col in columns:
-        by_column[col["id"]] = []
-
-    sorted_convs = sorted(convs.values(), key=lambda x: x["last_at"] or "", reverse=True)
-
-    for conv in sorted_convs:
-        phone = conv["phone"]
-        card = cards_map.get(phone, {})
-        column_id = card.get("column_id") or "inbox"
-        if column_id not in by_column:
-            column_id = "inbox"
-
-        enriched = {
-            **conv,
-            "custom_name": card.get("custom_name"),
-            "color": card.get("color", "gray"),
-            "flagged": card.get("flagged", False),
-            "reminder_text": card.get("reminder_text"),
-            "reminder_at": card.get("reminder_at"),
-            "reminder_fired": card.get("reminder_fired", False),
-        }
-        if enriched.get("custom_name"):
-            enriched["name"] = enriched["custom_name"]
-
-        by_column[column_id].append(enriched)
-
-    # Sort each column: flagged first, then by last_at desc (newest first)
-    for col_id in by_column:
-        by_column[col_id].sort(
-            key=lambda x: (1 if x.get("flagged") else 0, x.get("last_at") or ""),
-            reverse=True,
-        )
-
-    return {"columns": columns, "by_column": by_column}
-
-
-@api.post("/kanban/move")
-async def kanban_move(data: KanbanMoveRequest, current=Depends(get_current_user)):
-    uid_ = current["id"]
-    await db.kanban_cards.update_one(
-        {"user_id": uid_, "phone": data.contact_phone},
-        {"$set": {"column_id": data.to_column, "updated_at": now_iso()}},
-        upsert=True,
-    )
-    return {"ok": True}
-
-
-@api.post("/kanban/columns")
-async def kanban_create_column(data: KanbanColumnCreate, current=Depends(get_current_user)):
-    uid_ = current["id"]
-    col_count = await db.kanban_columns.count_documents({"user_id": uid_})
-    col = {
-        "id": uid(),
-        "user_id": uid_,
-        "name": data.name.upper(),
-        "color": data.color,
-        "position": col_count,
-        "created_at": now_iso(),
-    }
-    await db.kanban_columns.insert_one(col)
-    col.pop("_id", None)
-    col.pop("user_id", None)
-    return col
-
-
-@api.put("/kanban/columns/{col_id}")
-async def kanban_update_column(col_id: str, data: KanbanColumnUpdate, current=Depends(get_current_user)):
-    uid_ = current["id"]
-    update = {}
-    if data.name is not None:
-        update["name"] = data.name.upper()
-    if data.color is not None:
-        update["color"] = data.color
-    if update:
-        await db.kanban_columns.update_one(
-            {"id": col_id, "user_id": uid_},
-            {"$set": update},
-        )
-    return {"ok": True}
-
-
-@api.delete("/kanban/columns/{col_id}")
-async def kanban_delete_column(col_id: str, current=Depends(get_current_user)):
-    uid_ = current["id"]
-    await db.kanban_columns.delete_one({"id": col_id, "user_id": uid_})
-    await db.kanban_cards.update_many(
-        {"user_id": uid_, "column_id": col_id},
-        {"$set": {"column_id": "inbox"}},
-    )
-    return {"ok": True}
-
-
-@api.patch("/kanban/cards/{phone}")
-async def kanban_update_card(phone: str, data: KanbanCardUpdate, current=Depends(get_current_user)):
-    uid_ = current["id"]
-    update = {}
-    if data.custom_name is not None:
-        update["custom_name"] = data.custom_name
-    if data.color is not None:
-        update["color"] = data.color
-    if data.flagged is not None:
-        update["flagged"] = data.flagged
-    # Reminder handling
-    if data.reminder_clear:
-        update["reminder_text"] = None
-        update["reminder_at"] = None
-        update["reminder_fired"] = False
-    else:
-        if data.reminder_text is not None:
-            update["reminder_text"] = data.reminder_text or None
-        if data.reminder_at is not None:
-            update["reminder_at"] = data.reminder_at or None
-            update["reminder_fired"] = False  # reset so it fires again if rescheduled
-    if update:
-        update["updated_at"] = now_iso()
-        await db.kanban_cards.update_one(
-            {"user_id": uid_, "phone": phone},
-            {"$set": update},
-            upsert=True,
-        )
-    return {"ok": True}
-
-
-# ─── Background reminder loop ────────────────────────────────────────────────
-async def _reminder_loop():
-    """Check every 30 s for due reminders and fire WS events."""
-    while True:
-        try:
-            now_utc = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
-            due = await db.kanban_cards.find({
-                "reminder_at": {"$lte": now_utc, "$ne": None},
-                "reminder_fired": {"$ne": True},
-            }, {"_id": 0}).to_list(200)
-            for card in due:
-                await db.kanban_cards.update_one(
-                    {"user_id": card["user_id"], "phone": card["phone"]},
-                    {"$set": {"reminder_fired": True}},
-                )
-                await manager.send_to_user(card["user_id"], {
-                    "type": "kanban_reminder",
-                    "phone": card["phone"],
-                    "name": card.get("custom_name") or card.get("phone"),
-                    "text": card.get("reminder_text") or "Lembrete",
-                })
-        except Exception:
-            pass
-        await asyncio.sleep(30)
-
-
 # ============== WEBSOCKET ==============
 @api.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket, token: str = Query(...)):
@@ -1766,11 +1073,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
-
-@app.on_event("startup")
-async def startup():
-    asyncio.create_task(_reminder_loop())
-
 
 @app.on_event("shutdown")
 async def shutdown():

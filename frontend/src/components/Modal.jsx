@@ -30,12 +30,10 @@ export default function Modal({ open, onClose, children }) {
       {/* Modal */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative z-10 w-full max-w-xl rounded-2xl border border-white/10 bg-gradient-to-b from-neutral-900 to-neutral-950 shadow-2xl animate-scaleIn"
+        className="relative z-10 w-full max-w-xl rounded-2xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-gradient-to-b dark:from-neutral-900 dark:to-neutral-950 shadow-2xl animate-scaleIn"
       >
         <div className="p-6">{children}</div>
       </div>
     </div>
   );
 }
-
-

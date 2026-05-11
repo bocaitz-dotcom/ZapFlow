@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 from models import (
     UserRegister, UserLogin, UserPublic,
     ContactCreate, Contact,
-    TemplateCreate, Template,
+    TemplateCreate, TemplateUpdate, Template,
     WhatsAppSessionCreate, WhatsAppSession,
     CampaignCreate, Campaign,
     MessageLog, CreditRecharge, CreditTransaction,
@@ -57,7 +57,6 @@ api = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("zapflow")
-
 
 # ============== AUTH ==============
 @api.post("/auth/register")
@@ -994,6 +993,44 @@ async def chat_delete_conversation(
     return {"deleted": r.deleted_count}
 
 
+@api.put("/templates/{tid}", response_model=Template)
+async def update_template(tid: str, data: TemplateUpdate, current=Depends(get_current_user)):
+    # 🔎 busca template
+    template = await db.templates.find_one(
+        {"id": tid, "user_id": current["id"]},
+        {"_id": 0}
+    )
+
+    if not template:
+        raise HTTPException(404, "Template não encontrado")
+
+    # 🔥 atualiza apenas campos enviados
+    update_data = {}
+
+    if data.name is not None:
+        update_data["name"] = data.name
+
+    if data.tone is not None:
+        update_data["tone"] = data.tone
+
+    if data.versions is not None:
+        update_data["versions"] = data.versions
+
+    # salva no banco
+    await db.templates.update_one(
+        {"id": tid},
+        {"$set": update_data}
+    )
+
+    # retorna atualizado
+    updated = await db.templates.find_one(
+        {"id": tid, "user_id": current["id"]},
+        {"_id": 0}
+    )
+
+    return updated
+
+
 # ============== WEBSOCKET ==============
 @api.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket, token: str = Query(...)):
@@ -1023,12 +1060,12 @@ app.include_router(api)
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
-
 
 @app.on_event("shutdown")
 async def shutdown():

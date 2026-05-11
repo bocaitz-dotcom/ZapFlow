@@ -11,6 +11,86 @@ html, body, #root {
   color: #fafafa;
   font-family: 'Satoshi', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background 0.2s, color 0.2s;
+}
+
+html:not(.dark), html:not(.dark) body, html:not(.dark) #root {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+html:not(.dark) ::-webkit-scrollbar-track { background: #e2e8f0; }
+html:not(.dark) ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; }
+html:not(.dark) ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+html:not(.dark) .glass {
+  background: rgba(241,245,249,0.85);
+}
+
+html:not(.dark) input, html:not(.dark) textarea, html:not(.dark) select {
+  color-scheme: light;
+}
+
+html:not(.dark) input:-webkit-autofill,
+html:not(.dark) input:-webkit-autofill:hover,
+html:not(.dark) input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #f1f5f9 inset !important;
+  -webkit-text-fill-color: #0f172a !important;
+  caret-color: #0f172a;
+}
+
+/* ─── ZapFlow CSS variables (dark defaults) ────────────────────────────────── */
+:root {
+  --zf-s1: #0a0a0a;
+  --zf-s2: #141414;
+  --zf-card: rgba(255,255,255,0.025);
+  --zf-col: rgba(255,255,255,0.02);
+  --zf-b1: rgba(255,255,255,0.07);
+  --zf-bh: rgba(255,255,255,0.13);
+  --zf-b2: rgba(255,255,255,0.06);
+  --zf-b3: rgba(255,255,255,0.1);
+  --zf-b4: rgba(255,255,255,0.25);
+  --zf-b5: rgba(255,255,255,0.09);
+  --zf-t1: #fafafa;
+  --zf-t2: #e5e5e5;
+  --zf-t3: #a3a3a3;
+  --zf-t4: #525252;
+  --zf-t5: #404040;
+  --zf-in: rgba(255,255,255,0.04);
+  --zf-in2: rgba(255,255,255,0.03);
+  --zf-hd: rgba(255,255,255,0.015);
+  --zf-bd: rgba(255,255,255,0.05);
+  --zf-gr: rgba(255,255,255,0.15);
+  --zf-mg: #141414;
+  --zf-mt: rgba(255,255,255,0.07);
+  --zf-sel: #ffffff;
+}
+
+/* ─── ZapFlow CSS variables (light overrides) ──────────────────────────────── */
+html:not(.dark) {
+  --zf-s1: #ffffff;
+  --zf-s2: #f1f5f9;
+  --zf-card: #ffffff;
+  --zf-col: rgba(0,0,0,0.02);
+  --zf-b1: rgba(0,0,0,0.1);
+  --zf-bh: rgba(0,0,0,0.22);
+  --zf-b2: rgba(0,0,0,0.07);
+  --zf-b3: rgba(0,0,0,0.12);
+  --zf-b4: rgba(0,0,0,0.25);
+  --zf-b5: rgba(0,0,0,0.1);
+  --zf-t1: #0f172a;
+  --zf-t2: #1e293b;
+  --zf-t3: #475569;
+  --zf-t4: #64748b;
+  --zf-t5: #94a3b8;
+  --zf-in: rgba(0,0,0,0.04);
+  --zf-in2: rgba(0,0,0,0.03);
+  --zf-hd: rgba(0,0,0,0.025);
+  --zf-bd: rgba(0,0,0,0.05);
+  --zf-gr: rgba(0,0,0,0.15);
+  --zf-mg: #f1f5f9;
+  --zf-mt: rgba(0,0,0,0.1);
+  --zf-sel: #000000;
 }
 
 @layer base {
@@ -92,4 +172,51 @@ input:-webkit-autofill:focus {
   -webkit-box-shadow: 0 0 0 1000px #0a0a0a inset !important;
   -webkit-text-fill-color: #fafafa !important;
   caret-color: #fafafa;
+}
+
+.imgw{
+    width: 298px;
+}
+
+.whatsapp-bubble{
+  background: #073037;
+  color: #ededed;
+}
+.horacreatew{
+   color: #bbbbbb;
+}
+
+/* Adicione isso no seu CSS global */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.3s ease-out;
+}
+
+@keyframes zf-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(37,211,102,0.55); }
+  70%  { box-shadow: 0 0 0 6px rgba(37,211,102,0); }
+  100% { box-shadow: 0 0 0 0 rgba(37,211,102,0); }
 }

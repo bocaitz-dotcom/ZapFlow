@@ -186,11 +186,8 @@ class ChatMessage(BaseModel):
     id: str = Field(default_factory=uid)
     user_id: str
     session_id: Optional[str] = None
-    media: Optional[str] = None
-    media_type: Optional[str] = None
     phone: str            # contact phone (E.164 no "+", e.g. "5511987654321")
     name: Optional[str] = None
-    message_id: Optional[str] = None
     direction: Literal["in", "out"] = "in"
     content: str
     status: Literal["enviado", "entregue", "lido", "falha"] = "enviado"
@@ -202,66 +199,3 @@ class ChatSendRequest(BaseModel):
     phone: str
     text: str
     session_id: Optional[str] = None  # if None, picks first connected session
-
-
-class DirectSendByNameRequest(BaseModel):
-    user_id: str
-    instance_name: str
-    phone: str
-    name: str
-
-    template_name: Optional[str] = None
-    text: Optional[str] = None
-    msg_type: Optional[str] = None
-    media: Optional[str] = None
-    message_id: Optional[str] = None
-    result: Optional[str] = None
-    status: Optional[str] = None
-    from_raw: Optional[str] = None
-    content : Optional[str] = None
-    media_type : Optional[str] = None
-
-    # 🚗 automotivo
-    veiculo: Optional[str] = None
-    placa: Optional[str] = None
-    servico: Optional[str] = None
-
-
-# -------- Kanban --------
-class KanbanColumnCreate(BaseModel):
-    name: str
-    color: str = "blue"
-
-
-class KanbanColumnUpdate(BaseModel):
-    name: Optional[str] = None
-    color: Optional[str] = None
-
-
-class KanbanMoveRequest(BaseModel):
-    contact_phone: str
-    from_column: str
-    to_column: str
-
-
-class KanbanCardUpdate(BaseModel):
-    custom_name: Optional[str] = None
-    color: Optional[str] = None
-    flagged: Optional[bool] = None
-
-    # 🦷 saúde
-    procedimento: Optional[str] = None
-    dentista: Optional[str] = None
-    horario: Optional[str] = None
-    data: Optional[str] = None
-
-    # 📍 marketing
-    empresa: Optional[str] = None
-    cidade: Optional[str] = None
-    valor: Optional[str] = None
-    desconto: Optional[str] = None
-
-    # 🔔 lembrete
-    reminder_text: Optional[str] = None
-    reminder_at: Optional[str] = None   # ISO datetime string or None to clear
-    reminder_clear: Optional[bool] = None  # True = apagar lembrete

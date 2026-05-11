@@ -1,13 +1,10 @@
+
 /**
  * ZapFlow - Baileys microservice
  * Exposes HTTP endpoints for session management and sends real-time
  * events (QR, status, message updates) to FastAPI via webhook.
  *
-<<<<<<< HEAD
  * Runs on PORT 3003 (internal only).
-=======
- * Runs on PORT 3001 (internal only).
->>>>>>> 5d7903a41607f1371af1bd7ac08ea7cd0b3ec847
  */
 const express = require("express");
 const path = require("path");
@@ -21,17 +18,51 @@ const {
   DisconnectReason,
   fetchLatestBaileysVersion,
   Browsers,
+  downloadContentFromMessage,
 } = require("@whiskeysockets/baileys");
 
-<<<<<<< HEAD
+const crypto = require("crypto");
+
+process.on("unhandledRejection", (reason) => {
+
+  try{
+
+  const text = String(reason || "");
+
+  if (
+    text.includes("Bad MAC") ||
+    text.includes("No matching sessions found") ||
+    text.includes("Failed to decrypt")
+  ) {
+    console.log("[signal-ignore]", text);
+    return;
+  }
+
+  console.log("[unhandledRejection]", reason);
+  }catch(err){
+    console.log("[unhandledRejection] failed to stringify reason:", err?.message);
+  }
+});
+
+process.on("uncaughtException", (err) => {
+
+  const text = String(err || "");
+
+  if (
+    text.includes("Bad MAC") ||
+    text.includes("No matching sessions found") ||
+    text.includes("Failed to decrypt")
+  ) {
+    console.log("[signal-ignore]", text);
+    return;
+  }
+
+  console.log("[uncaughtException]", err);
+});
+
 const PORT = process.env.WA_PORT || 3003;
 const SESSIONS_DIR = process.env.WA_SESSIONS_DIR || "/app/whatsapp-sessions";
-const WEBHOOK_URL = process.env.WA_WEBHOOK_URL || "http://0.0.0.0:8000/api/whatsapp/webhook";
-=======
-const PORT = process.env.WA_PORT || 3001;
-const SESSIONS_DIR = process.env.WA_SESSIONS_DIR || "/app/whatsapp-sessions";
-const WEBHOOK_URL = process.env.WA_WEBHOOK_URL || "http://127.0.0.1:8001/api/whatsapp/webhook";
->>>>>>> 5d7903a41607f1371af1bd7ac08ea7cd0b3ec847
+const WEBHOOK_URL = process.env.WA_WEBHOOK_URL || "http://localhost:8000/api/whatsapp/webhook";
 const WEBHOOK_SECRET = process.env.WA_WEBHOOK_SECRET || "zapflow-webhook-secret";
 
 fs.mkdirSync(SESSIONS_DIR, { recursive: true });
@@ -95,6 +126,86 @@ function recordLidMapping(sessionId, lidJid, phoneJid) {
   }
 }
 
+async function salvarImagemEGerarUrl(imageMsg) {
+  const stream = await downloadContentFromMessage(imageMsg, "image");
+
+  let buffer = Buffer.from([]);
+  for await (const chunk of stream) {
+    buffer = Buffer.concat([buffer, chunk]);
+  }
+
+  const fileName = crypto.randomUUID() + ".jpg";
+  const filePath = path.join(__dirname, "public/uploads/imagens", fileName);
+
+  fs.writeFileSync(filePath, buffer);
+
+  return `https://arquivos.cbase.store/uploads/imagens/${fileName}`;
+}
+
+async function salvarAudioEGerarUrl(audioMsg) {
+  const stream = await downloadContentFromMessage(audioMsg, "audio");
+
+  let buffer = Buffer.from([]);
+
+  for await (const chunk of stream) {
+    buffer = Buffer.concat([buffer, chunk]);
+  }
+
+  const uploadDir = path.join(__dirname, "public/uploads/audios");
+  fs.mkdirSync(uploadDir, { recursive: true });
+
+  const fileName = crypto.randomUUID() + ".ogg";
+  const filePath = path.join(uploadDir, fileName);
+
+  fs.writeFileSync(filePath, buffer);
+
+  return `https://arquivos.cbase.store/uploads/audios/${fileName}`;
+}
+
+async function salvarVideoEGerarUrl(videoMsg) {
+  const stream = await downloadContentFromMessage(videoMsg, "video");
+
+  let buffer = Buffer.from([]);
+
+  for await (const chunk of stream) {
+    buffer = Buffer.concat([buffer, chunk]);
+  }
+
+  const uploadDir = path.join(__dirname, "public/uploads/videos");
+  fs.mkdirSync(uploadDir, { recursive: true });
+
+  const fileName = crypto.randomUUID() + ".mp4";
+  const filePath = path.join(uploadDir, fileName);
+
+  fs.writeFileSync(filePath, buffer);
+
+  return `https://arquivos.cbase.store/uploads/videos/${fileName}`;
+}
+
+async function salvarDocumentoEGerarUrl(docMsg) {
+  const stream = await downloadContentFromMessage(docMsg, "document");
+
+  let buffer = Buffer.from([]);
+
+  for await (const chunk of stream) {
+    buffer = Buffer.concat([buffer, chunk]);
+  }
+
+  const uploadDir = path.join(__dirname, "public/uploads/documents");
+  fs.mkdirSync(uploadDir, { recursive: true });
+
+  // pega extensão real
+  const fileNameOriginal = docMsg.fileName || "file.bin";
+  const ext = path.extname(fileNameOriginal) || "";
+
+  const fileName = crypto.randomUUID() + ext;
+  const filePath = path.join(uploadDir, fileName);
+
+  fs.writeFileSync(filePath, buffer);
+
+  return `https://arquivos.cbase.store/uploads/documents/${fileName}`;
+}
+
 function resolvePhoneFromJid(sessionId, jid) {
   if (!jid) return jid;
   if (jid.endsWith("@s.whatsapp.net")) return jid;
@@ -115,7 +226,26 @@ async function sendWebhook(payload) {
       timeout: 10000,
     });
   } catch (err) {
-    console.error("[webhook] failed:", err?.message || err);
+    console.log("[webhook] failed:", err?.message || err);
+  }
+}
+
+function mapStatus(status) {
+  switch (status) {
+    case 0:
+      return "falha";
+    case 1:
+      return "PENDENTE";
+    case 2:
+      return "SERVER_ACK";
+    case 3:
+      return "entregue";
+    case 4:
+      return "lido";
+    case 5:
+      return "PLAYED";
+    default:
+      return "UNKNOWN";
   }
 }
 
@@ -136,11 +266,87 @@ async function startSession(sessionId, userId, displayName) {
     version,
     auth: state,
     logger,
+
     printQRInTerminal: false,
-    browser: Browsers.macOS("ZapFlow"),
+
+    browser: Browsers.windows("Chrome"),
+
     syncFullHistory: false,
+    fireInitQueries: false,
+    downloadHistory: false,
     markOnlineOnConnect: false,
+    generateHighQualityLinkPreview: false,
+
+    shouldSyncHistoryMessage: () => false,
   });
+ 
+  sock.ev.on("presence.update", async(m) => {
+
+    await sendWebhook({
+        event: "log_console",
+        session_id: sessionId,
+        user_id: userId,
+        messages: { event: "presence.update", data: m },
+      });
+  });
+
+  sock.ev.on("chats.update", async(m) => {
+
+    await sendWebhook({
+        event: "log_console",
+        session_id: sessionId,
+        user_id: userId,
+        messages: { event: "chats.update", data: m },
+      });
+  });
+
+  sock.ev.on("contacts.update", async(m) => {
+
+    await sendWebhook({
+        event: "log_console",
+        session_id: sessionId,
+        user_id: userId,
+        messages: { event: "contacts.update", data: m },
+      });
+  });
+ 
+  sock.ev.on("messages.update", async (updates) => {
+    for (const item of updates) {
+      const key = item.key;
+      const statusCode = item.update?.status;
+
+      if (!key?.id) continue;
+
+      const payload = { 
+        event: "log_console",
+        session_id: sessionId,
+        user_id: userId,
+        messages:{
+          event: "messages.update",
+          message_id: key.id,
+          remote_jid: key.remoteJid,
+          from_me: key.fromMe,
+          status_code: statusCode,
+          status: typeof statusCode === "number"
+            ? mapStatus(statusCode)
+            : statusCode, // SERVER_ACK já vem string
+        }
+      };
+
+      await sendWebhook(payload);
+    }
+  });
+
+  sock.ev.on("messaging-history.set", async(m) => {
+    
+    await sendWebhook({
+        event: "log_console",
+        session_id: sessionId,
+        user_id: userId,
+        messages: { event: "messaging-history.set", data: m },
+      });
+  });
+
 
   const entry = {
     sock,
@@ -156,6 +362,14 @@ async function startSession(sessionId, userId, displayName) {
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("connection.update", async (update) => {
+
+      await sendWebhook({
+        event: "log_console",
+        session_id: sessionId,
+        user_id: userId,
+        messages: { type: "connection_update", data: update },
+      });
+
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
@@ -171,7 +385,7 @@ async function startSession(sessionId, userId, displayName) {
           status: "aguardando_qr",
         });
       } catch (err) {
-        console.error("[qr] encode failed:", err?.message);
+        console.log("[qr] encode failed:", err?.message);
       }
     }
 
@@ -212,21 +426,122 @@ async function startSession(sessionId, userId, displayName) {
         // auto-reconnect after 3s
         setTimeout(() => {
           startSession(sessionId, userId, displayName).catch((e) =>
-            console.error("[reconnect] failed:", e?.message)
+            console.log("[reconnect] failed:", e?.message)
           );
         }, 3000);
       }
     }
   });
 
-  sock.ev.on("messages.upsert", async (m) => {
-    for (const msg of m.messages) {
-      if (msg.key.fromMe) continue;
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+
+     
+    for (const msg of messages) {
+      if (!msg.message) continue;
+
+      let type = false;
+      let text = false;
+      let content = null;
+      if (msg.message?.conversation || msg.message?.extendedTextMessage?.text) {
+        type = 'text'
+        text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "";
+        content = {text: text, type: type};
+      }
+
+      // ----------- IMAGEM NORMAL ----------------
+      let imageUrl = null;
+      if (msg.message.imageMessage) {
+        type = "image";
+        imageUrl = await salvarImagemEGerarUrl(msg.message.imageMessage);
+        content = {image: imageUrl, type: type};
+      }
+
+      // ---------------- IMAGEM VIEW ONCE ----------------
+      if (msg.message.viewOnceMessage?.message?.imageMessage) {
+        type = "image";
+        imageUrl = await salvarImagemEGerarUrl(
+          msg.message.viewOnceMessage.message.imageMessage
+        );
+        content = {image: imageUrl, type: type};
+      }
+
+      // ---------------- AUDIO ----------------
+      let audioUrl = null;
+      if (msg.message.audioMessage) {
+        type = "audio";
+        audioUrl = await salvarAudioEGerarUrl(msg.message.audioMessage);
+        content = {audio: audioUrl, type: type};
+      }
+
+      // ---------------- VIDEO ----------------
+      let videoUrl = null;
+      if (msg.message.videoMessage) {
+        type = "video";
+        videoUrl = await salvarVideoEGerarUrl(msg.message.videoMessage);
+        content = {video: videoUrl, type: type};
+      }
+
+      // ---------------- DOCUMENTO ----------------
+      let documentUrl = null;
+      if (msg.message.documentMessage) {
+        type = "document";
+        documentUrl = await salvarDocumentoEGerarUrl(msg.message.documentMessage);
+        content = {document: documentUrl, type: type};
+      }
+
+      // ---------------- LOCATION ----------------
+      let location = null;
+      if (msg.message.locationMessage) {
+
+          type = "location";
+
+          const loc = msg.message.locationMessage;
+
+          const latitude = loc.degreesLatitude;
+          const longitude = loc.degreesLongitude;
+
+          let imageUrlLocation = loc.jpegThumbnail
+            ? `data:image/jpeg;base64,${loc.jpegThumbnail}`
+            : null;
+
+          const googleMapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+          location = {
+            latitude,
+            longitude,
+            google_maps_url: googleMapsUrl,
+            thumbnail: imageUrlLocation,
+          }
+         content = {location: location, type: type};
+      }
+
+      let contact = null;
+      const contentMsg = msg.message;
+      if (contentMsg?.contactMessage) {
+
+       type = "contact";
+
+        const rawContact = contentMsg.contactMessage;
+        const vcard = rawContact.vcard;
+
+        // PEGAR SOMENTE O WAID (telefone real do WhatsApp)
+        const waidMatch = vcard.match(/waid=(\d+)/);
+        const phone = waidMatch ? waidMatch[1] : null;
+
+        contact = {
+          name: rawContact.displayName,
+          phone,
+          vcard,
+        };
+        content = {contact: contact, type: type};
+      }
+
       const rawJid = msg.key.remoteJid || "";
-      // Try, in order: Baileys-populated senderPn, our recorded LID->phone
-      // mapping, and finally fall back to the raw JID.
+      const isFromMe = msg.key.fromMe;
       const senderPn = msg.key.senderPn || "";
+
       let from = rawJid;
+
       if (rawJid.endsWith("@lid")) {
         if (senderPn) {
           from = senderPn;
@@ -235,23 +550,41 @@ async function startSession(sessionId, userId, displayName) {
           from = resolvePhoneFromJid(sessionId, rawJid);
         }
       }
-      const text =
-        msg.message?.conversation ||
-        msg.message?.extendedTextMessage?.text ||
-        "";
+
+      await sendWebhook({
+        event: "log_console",
+        session_id: sessionId,
+        user_id: userId,
+        messages:{
+          session_id: sessionId,
+          user_id: userId,
+          from,
+          from_raw: rawJid,
+          content,
+          push_name: isFromMe ? null : (msg.pushName ?? null),
+          from_me: isFromMe,
+          message_id: msg.key.id, // ⭐ já manda isso
+        }
+      });
+
       await sendWebhook({
         event: "incoming_message",
         session_id: sessionId,
         user_id: userId,
         from,
+        content,
         from_raw: rawJid,
-        push_name: msg.pushName || null,
+        push_name: isFromMe ? null : (msg.pushName ?? null),
         text,
-      }).catch(() => {});
+        media: content,
+        from_me: isFromMe,
+        message_id: msg.key.id, // ⭐ já manda isso
+      });
     }
   });
 
   return entry;
+
 }
 
 async function stopSession(sessionId) {
@@ -358,6 +691,9 @@ async function sendAudio(sessionId, number, audioBase64, mime = "audio/mp4") {
 
 // ------ HTTP API ------
 const app = express();
+
+app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
+
 app.use(express.json({ limit: "10mb" }));
 
 app.get("/health", (_, res) => res.json({ ok: true, sessions: sessions.size }));
@@ -374,7 +710,7 @@ app.post("/session/start", async (req, res) => {
       phone_number: entry.phone,
     });
   } catch (err) {
-    console.error("[/session/start] error:", err?.message);
+    console.log("[/session/start] error:", err?.message);
     res.status(500).json({ error: err?.message || "Failed to start session" });
   }
 });
@@ -478,13 +814,8 @@ async function restoreSessions(attempt = 1) {
   }
 }
 
-<<<<<<< HEAD
 app.listen(PORT, "0.0.0.0", async () => {
   console.log(`[zapflow-wa] listening on 0.0.0.0:${PORT}`);
-=======
-app.listen(PORT, "127.0.0.1", async () => {
-  console.log(`[zapflow-wa] listening on 127.0.0.1:${PORT}`);
->>>>>>> 5d7903a41607f1371af1bd7ac08ea7cd0b3ec847
   console.log(`[zapflow-wa] sessions dir: ${SESSIONS_DIR}`);
   console.log(`[zapflow-wa] webhook: ${WEBHOOK_URL}`);
   await restoreSessions();

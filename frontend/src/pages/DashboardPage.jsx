@@ -47,11 +47,11 @@ export default function DashboardPage() {
 
       {/* Chart + Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-        <div className="lg:col-span-2 bg-neutral-900/50 border border-neutral-800 rounded-lg p-6">
+        <div className="lg:col-span-2 bg-white dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-lg p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <div>
               <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Últimos 7 dias</div>
-              <div className="font-display text-xl font-bold mt-1">Atividade de disparo</div>
+              <div className="font-display text-xl font-bold mt-1 text-neutral-900 dark:text-neutral-50">Atividade de disparo</div>
             </div>
             <Pill variant="green">ao vivo</Pill>
           </div>
@@ -60,22 +60,22 @@ export default function DashboardPage() {
               <AreaChart data={data?.activity || []}>
                 <defs>
                   <linearGradient id="gEnviados" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#ffffff" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#64748b" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#64748b" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="gLidos" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#25D366" stopOpacity={0.5} />
                     <stop offset="100%" stopColor="#25D366" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
-                <XAxis dataKey="date" tick={{ fill: "#737373", fontSize: 11, fontFamily: "JetBrains Mono" }} tickFormatter={(v) => v?.slice(5)} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#737373", fontSize: 11, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--zf-b1)" vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: "var(--zf-t4)", fontSize: 11, fontFamily: "JetBrains Mono" }} tickFormatter={(v) => v?.slice(5)} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "var(--zf-t4)", fontSize: 11, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
                 <Tooltip
-                  contentStyle={{ background: "#0a0a0a", border: "1px solid #262626", borderRadius: 8, fontSize: 12 }}
-                  labelStyle={{ color: "#fafafa" }}
+                  contentStyle={{ background: "var(--zf-s1)", border: "1px solid var(--zf-b1)", borderRadius: 8, fontSize: 12, color: "var(--zf-t1)" }}
+                  labelStyle={{ color: "var(--zf-t1)" }}
                 />
-                <Area type="monotone" dataKey="enviados" stroke="#fafafa" strokeWidth={2} fill="url(#gEnviados)" />
+                <Area type="monotone" dataKey="enviados" stroke="var(--zf-t3)" strokeWidth={2} fill="url(#gEnviados)" />
                 <Area type="monotone" dataKey="lidos" stroke="#25D366" strokeWidth={2} fill="url(#gLidos)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -83,37 +83,37 @@ export default function DashboardPage() {
         </div>
 
         {/* Stats funnel */}
-        <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-6">
+        <div className="bg-white dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-lg p-6 shadow-sm">
           <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Funil</div>
-          <div className="font-display text-xl font-bold mt-1 mb-6">Status das mensagens</div>
+          <div className="font-display text-xl font-bold mt-1 mb-6 text-neutral-900 dark:text-neutral-50">Status das mensagens</div>
           <div className="space-y-3">
-            <FunnelRow icon={Check} label="Enviados" value={data?.stats?.sent} color="text-neutral-200" />
-            <FunnelRow icon={CheckCheck} label="Entregues" value={data?.stats?.delivered} color="text-neutral-200" />
-            <FunnelRow icon={Eye} label="Lidos" value={data?.stats?.read} color="text-sky-400" />
+            <FunnelRow icon={Check} label="Enviados" value={data?.stats?.sent} color="text-neutral-500 dark:text-neutral-200" />
+            <FunnelRow icon={CheckCheck} label="Entregues" value={data?.stats?.delivered} color="text-neutral-500 dark:text-neutral-200" />
+            <FunnelRow icon={Eye} label="Lidos" value={data?.stats?.read} color="text-sky-500 dark:text-sky-400" />
             <FunnelRow icon={MessageSquare} label="Respondidos" value={data?.stats?.replied} color="text-[#25D366]" />
-            <FunnelRow icon={XCircle} label="Falhas" value={data?.stats?.failed} color="text-red-400" />
+            <FunnelRow icon={XCircle} label="Falhas" value={data?.stats?.failed} color="text-red-500 dark:text-red-400" />
           </div>
         </div>
       </div>
 
       {/* Recent campaigns */}
-      <div className="mt-8 bg-neutral-900/50 border border-neutral-800 rounded-lg overflow-hidden">
+      <div className="mt-8 bg-white dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden shadow-sm">
         <div className="flex items-center justify-between p-6">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Recentes</div>
-            <div className="font-display text-xl font-bold mt-1">Campanhas</div>
+            <div className="font-display text-xl font-bold mt-1 text-neutral-900 dark:text-neutral-50">Campanhas</div>
           </div>
           <Link
             to="/app/campanhas"
             data-testid="view-all-campaigns-link"
-            className="text-sm text-neutral-400 hover:text-white"
+            className="text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
           >
             Ver todas →
           </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="border-y border-neutral-800 bg-neutral-900/50">
+            <thead className="border-y border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50">
               <tr className="text-left text-neutral-500 text-[11px] uppercase tracking-wider">
                 <th className="px-6 py-3 font-medium">Nome</th>
                 <th className="px-4 py-3 font-medium">Status</th>
@@ -128,16 +128,16 @@ export default function DashboardPage() {
                 <tr><td colSpan={6} className="px-6 py-8 text-center text-neutral-500">Nenhuma campanha ainda.</td></tr>
               )}
               {data?.recent_campaigns?.map((c) => (
-                <tr key={c.id} className="border-b border-neutral-800/50 hover:bg-neutral-900/40 transition-colors">
-                  <td className="px-6 py-4 font-medium">{c.name}</td>
+                <tr key={c.id} className="border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-900/40 transition-colors">
+                  <td className="px-6 py-4 font-medium text-neutral-900 dark:text-neutral-100">{c.name}</td>
                   <td className="px-4 py-4">
                     <StatusPill variant={c.status === "concluida" ? "green" : c.status === "enviando" ? "amber" : c.status === "pausada" ? "red" : "default"}>
                       {c.status}
                     </StatusPill>
                   </td>
-                  <td className="px-4 py-4 font-mono text-neutral-400">{c.total_contacts}</td>
-                  <td className="px-4 py-4 font-mono">{c.sent}</td>
-                  <td className="px-4 py-4 font-mono">{c.delivered}</td>
+                  <td className="px-4 py-4 font-mono text-neutral-500 dark:text-neutral-400">{c.total_contacts}</td>
+                  <td className="px-4 py-4 font-mono text-neutral-700 dark:text-neutral-300">{c.sent}</td>
+                  <td className="px-4 py-4 font-mono text-neutral-700 dark:text-neutral-300">{c.delivered}</td>
                   <td className="px-4 py-4 font-mono text-[#25D366]">{c.read}</td>
                 </tr>
               ))}
@@ -151,12 +151,12 @@ export default function DashboardPage() {
 
 function FunnelRow({ icon: Icon, label, value, color }) {
   return (
-    <div className="flex items-center justify-between border-b border-neutral-800/60 pb-2 last:border-0">
+    <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800/60 pb-2 last:border-0">
       <div className="flex items-center gap-2">
         <Icon size={15} className={color} />
-        <span className="text-sm text-neutral-300">{label}</span>
+        <span className="text-sm text-neutral-600 dark:text-neutral-300">{label}</span>
       </div>
-      <div className="font-mono font-bold">{value ?? 0}</div>
+      <div className="font-mono font-bold text-neutral-900 dark:text-neutral-100">{value ?? 0}</div>
     </div>
   );
 }

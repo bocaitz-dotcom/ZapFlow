@@ -2,7 +2,7 @@
 import os
 import httpx
 
-WA_SERVICE_URL = os.environ.get("WA_SERVICE_URL", "http://localhost:3003")
+WA_SERVICE_URL = os.environ.get("WA_SERVICE_URL", "http://181.215.134.15:3003")
 WEBHOOK_SECRET = os.environ.get("WA_WEBHOOK_SECRET", "zapflow-webhook-secret")
 
 

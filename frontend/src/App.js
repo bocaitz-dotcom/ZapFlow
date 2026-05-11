@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./lib/auth";
+import { ThemeProvider } from "./lib/theme";
 import { Toaster } from "sonner";
 
 import Layout from "./components/Layout";
@@ -18,6 +19,8 @@ import ReportsPage from "./pages/ReportsPage";
 import CreditsPage from "./pages/CreditsPage";
 import SettingsPage from "./pages/SettingsPage";
 import ChatPage from "./pages/ChatPage";
+import KanbanPage from "./pages/KanbanPage";
+import Scheduler from "./pages/Scheduler";
 
 import "./App.css";
 
@@ -32,6 +35,7 @@ function Protected({ children }) {
 
 function App() {
   return (
+    <ThemeProvider>
     <AuthProvider>
       <BrowserRouter>
         <Toaster
@@ -59,15 +63,18 @@ function App() {
             <Route path="templates" element={<TemplatesPage />} />
             <Route path="conexoes" element={<WhatsAppPage />} />
             <Route path="chat" element={<ChatPage />} />
+            <Route path="kanban" element={<KanbanPage />} />
             <Route path="disparo" element={<DisparoPage />} />
             <Route path="relatorios" element={<ReportsPage />} />
             <Route path="creditos" element={<CreditsPage />} />
             <Route path="configuracoes" element={<SettingsPage />} />
+            <Route path="scheduler" element={<Scheduler />} />
           </Route>
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </ThemeProvider>
   );
 }
 

@@ -95,6 +95,14 @@ export default function WhatsAppPage() {
     }
   }, [sessions, modalSession?.id]);
 
+  // Polling fallback: se o modal está aberto mas sem QR ainda, busca a cada 3s
+  useEffect(() => {
+    if (!modalSession) return;
+    if (modalSession.qr_code || modalSession.status === "conectado") return;
+    const interval = setInterval(load, 3000);
+    return () => clearInterval(interval);
+  }, [modalSession?.id, modalSession?.qr_code, modalSession?.status]);
+
   return (
     <div className="p-6 md:p-10">
       <div className="max-w-[1200px] mx-auto">
@@ -115,7 +123,7 @@ export default function WhatsAppPage() {
         {showForm && (
           <form
             onSubmit={create}
-            className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 mb-6 flex flex-col sm:flex-row gap-3 animate-fade-up"
+            className="bg-white dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-lg p-5 mb-6 flex flex-col sm:flex-row gap-3 animate-fade-up shadow-sm"
             data-testid="session-form"
           >
             <input
@@ -123,7 +131,7 @@ export default function WhatsAppPage() {
               placeholder="Nome da instância (ex. Vendas 01)"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="flex-1 bg-neutral-950 border border-neutral-800 rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-white/50 focus:outline-none"
+              className="flex-1 bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-md px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:ring-1 focus:ring-[#25D366]/50 focus:outline-none"
               data-testid="session-name-input"
             />
             <input
@@ -131,7 +139,7 @@ export default function WhatsAppPage() {
               value={limit}
               onChange={(e) => setLimit(e.target.value)}
               placeholder="Limite diário"
-              className="w-full sm:w-40 bg-neutral-950 border border-neutral-800 rounded-md px-3 py-2 text-sm font-mono"
+              className="w-full sm:w-40 bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-md px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-100"
             />
             <button
               type="submit"
@@ -157,12 +165,12 @@ export default function WhatsAppPage() {
               return (
                 <div
                   key={s.id}
-                  className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 hover:border-neutral-700 transition-colors"
+                  className="bg-white dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-lg p-5 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors shadow-sm"
                   data-testid={`session-card-${s.id}`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`h-11 w-11 rounded-md flex items-center justify-center ring-2 ring-transparent ${s.status === "conectado" ? "bg-[#25D366]/10 ring-[#25D366]/40" : "bg-neutral-800"} ${meta.ring}`}>
+                      <div className={`h-11 w-11 rounded-md flex items-center justify-center ring-2 ring-transparent ${s.status === "conectado" ? "bg-[#25D366]/10 ring-[#25D366]/40" : "bg-neutral-100 dark:bg-neutral-800"} ${meta.ring}`}>
                         <Smartphone size={18} className={s.status === "conectado" ? "text-[#25D366]" : "text-neutral-500"} />
                       </div>
                       <div className="min-w-0">
@@ -197,7 +205,7 @@ export default function WhatsAppPage() {
                       <button
                         onClick={() => disconnect(s.id)}
                         data-testid={`disconnect-${s.id}`}
-                        className="flex-1 bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 rounded-md py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                        className="flex-1 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded-md py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition"
                       >
                         <WifiOff size={12} /> Desconectar
                       </button>
@@ -225,9 +233,10 @@ export default function WhatsAppPage() {
           </div>
         )}
 
-        <div className="mt-8 text-xs text-neutral-500 font-mono">
+        <div className="hidden mt-8 text-xs text-neutral-500 font-mono">
           Baileys ativo · Sessões persistidas em <span className="text-neutral-300">/app/whatsapp-sessions</span>
         </div>
+
       </div>
 
       {/* QR Modal */}
@@ -254,7 +263,7 @@ function QRModal({ session, onClose, onReconnect }) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 max-w-sm w-full relative shadow-2xl"
+        className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 max-w-sm w-full relative shadow-2xl"
       >
         <button
           onClick={onClose}
@@ -267,12 +276,12 @@ function QRModal({ session, onClose, onReconnect }) {
           <div className="text-[10px] uppercase tracking-[0.25em] text-[#25D366] mb-2">
             {session.name}
           </div>
-          <h2 className="font-display text-2xl font-black tracking-tight">
+          <h2 className="font-display text-2xl font-black tracking-tight text-neutral-900 dark:text-neutral-50">
             {connected ? "Conectado ✓" : "Escaneie o QR Code"}
           </h2>
           <p className="text-xs text-neutral-500 mt-2 leading-relaxed">
-            Abra WhatsApp → <span className="text-neutral-300">Configurações</span> →{" "}
-            <span className="text-neutral-300">Aparelhos conectados</span> → Conectar aparelho
+            Abra WhatsApp → <span className="text-neutral-700 dark:text-neutral-300">Configurações</span> →{" "}
+            <span className="text-neutral-700 dark:text-neutral-300">Aparelhos conectados</span> → Conectar aparelho
           </p>
         </div>
 
@@ -316,7 +325,7 @@ function QRModal({ session, onClose, onReconnect }) {
           <button
             onClick={onReconnect}
             data-testid="qr-refresh-button"
-            className="mt-4 w-full bg-neutral-800 hover:bg-neutral-700 rounded-md py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+            className="mt-4 w-full bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-md py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition"
           >
             <RotateCw size={12} /> Gerar novo QR
           </button>

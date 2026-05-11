@@ -6,6 +6,29 @@ import { toast } from "sonner";
 import Modal from "../components/Modal";
 import Select from "../components/Select";
 
+/* =========================
+   VARIÁVEIS DE TEMPLATE
+========================= */
+const TEMPLATE_VARIABLES = [
+  { label: "Nome", value: "{nome}" },
+  { label: "Telefone", value: "{telefone}" },
+
+  { label: "Veículo", value: "{veiculo}" },
+  { label: "Placa", value: "{placa}" },
+  { label: "Serviço", value: "{servico}" },
+
+  { label: "Procedimento", value: "{procedimento}" },
+  { label: "Dentista", value: "{dentista}" },
+  { label: "Horário", value: "{horario}" },
+  { label: "Data", value: "{data}" },
+
+  { label: "Empresa", value: "{empresa}" },
+  { label: "Cidade", value: "{cidade}" },
+
+  { label: "Valor", value: "{valor}" },
+  { label: "Desconto", value: "{desconto}" }
+];
+
 export default function TemplatesPage() {
   const [items, setItems] = useState([]);
   const [show, setShow] = useState(false);
@@ -25,6 +48,32 @@ export default function TemplatesPage() {
   useEffect(() => {
     load();
   }, []);
+
+  /* =========================
+     INSERIR VARIÁVEL NO CURSOR
+  ========================= */
+  const insertVariable = (i, variable) => {
+    const updated = [...form.versions];
+
+    const textarea = document.getElementById(`template-${i}`);
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+
+    updated[i] =
+      updated[i].substring(0, start) +
+      variable +
+      updated[i].substring(end);
+
+    setForm({ ...form, versions: updated });
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd =
+        start + variable.length;
+    }, 0);
+  };
 
   const save = async (e) => {
     e.preventDefault();
@@ -70,8 +119,7 @@ export default function TemplatesPage() {
 
   return (
     <div className="p-6 md:p-10 max-w-[1200px] mx-auto">
-      
-      {/* 🔥 HEADER CORRETO */}
+
       <PageHeader
         eyebrow="Biblioteca"
         title="Templates de mensagem"
@@ -89,22 +137,23 @@ export default function TemplatesPage() {
         </button>
       </PageHeader>
 
-      {/* 🔥 MODAL */}
+      {/* =========================
+           MODAL
+      ========================= */}
       <Modal open={show} onClose={resetModal}>
         <form onSubmit={save} className="space-y-4">
+
           <div className="flex justify-between items-start">
             <div>
-              <h2 className="text-xl font-semibold">
+              <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
                 {editingTemplate ? "Editar template" : "Novo template"}
               </h2>
-              <p className="text-sm text-neutral-400">
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">
                 Crie mensagens reutilizáveis com variações
               </p>
             </div>
 
-            <button type="button" onClick={resetModal}>
-              ✕
-            </button>
+            <button type="button" onClick={resetModal}>✕</button>
           </div>
 
           <input
@@ -114,7 +163,7 @@ export default function TemplatesPage() {
             onChange={(e) =>
               setForm({ ...form, name: e.target.value })
             }
-            className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 focus:ring-2 focus:ring-white/20 outline-none"
+            className="w-full bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400"
           />
 
           <Select
@@ -128,33 +177,57 @@ export default function TemplatesPage() {
             ]}
           />
 
-          {/* VARIAÇÕES */}
+          {/* =========================
+               VARIAÇÕES
+          ========================= */}
           {form.versions.map((v, i) => (
-            <div key={i} className="flex gap-2 items-start">
-              <textarea
-                rows={2}
-                value={v}
-                placeholder={`Variação ${i + 1}`}
-                onChange={(e) => {
-                  const c = [...form.versions];
-                  c[i] = e.target.value;
-                  setForm({ ...form, versions: c });
-                }}
-                className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-white/20 outline-none"
-              />
+            <div key={i} className="space-y-2">
 
-              {form.versions.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const c = form.versions.filter((_, index) => index !== i);
+              <div className="flex gap-2 items-start">
+
+                <textarea
+                  id={`template-${i}`}
+                  rows={2}
+                  value={v}
+                  placeholder={`Variação ${i + 1}`}
+                  onChange={(e) => {
+                    const c = [...form.versions];
+                    c[i] = e.target.value;
                     setForm({ ...form, versions: c });
                   }}
-                  className="mt-1 p-2 rounded-md text-neutral-500 hover:text-red-400 hover:bg-red-500/10 transition"
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
+                  className="flex-1 bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-100"
+                />
+
+                {form.versions.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const c = form.versions.filter((_, index) => index !== i);
+                      setForm({ ...form, versions: c });
+                    }}
+                    className="p-2 text-red-400"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* =========================
+                   VARIÁVEIS CLIQUE
+              ========================= */}
+              <div className="flex flex-wrap gap-1">
+                {TEMPLATE_VARIABLES.map((v) => (
+                  <button
+                    key={v.value}
+                    type="button"
+                    onClick={() => insertVariable(i, v.value)}
+                    className="text-[10px] px-2 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700"
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+
             </div>
           ))}
 
@@ -163,97 +236,65 @@ export default function TemplatesPage() {
             onClick={() =>
               setForm({ ...form, versions: [...form.versions, ""] })
             }
-            className="text-xs text-neutral-400 hover:text-white transition"
+            className="text-xs text-neutral-400"
           >
             + Adicionar variação
           </button>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={resetModal}
-              className="text-sm text-neutral-400 hover:text-white"
-            >
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={resetModal}>
               Cancelar
             </button>
 
-            <button
-              type="submit"
-              className="bg-white text-neutral-950 px-4 py-2 rounded-lg font-semibold hover:bg-neutral-200 transition"
-            >
+            <button type="submit" className="bg-white text-black px-4 py-2 rounded-lg">
               {editingTemplate ? "Atualizar" : "Salvar"}
             </button>
           </div>
+
         </form>
       </Modal>
 
-      {/* 🔥 CARDS */}
+      {/* =========================
+           LISTA
+      ========================= */}
       {items.length === 0 ? (
         <Empty title="Sem templates" subtitle="Crie seu primeiro template." />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-          {items.map((t) => (
-            <div
-              key={t.id}
-              className="rounded-xl border border-neutral-800 bg-gradient-to-b from-neutral-900 to-neutral-950 p-5 transition hover:border-neutral-700 hover:shadow-xl"
-            >
-              {/* HEADER DO CARD */}
-              <div className="flex justify-between mb-3">
-                <div>
-                  <div className="text-lg font-semibold">{t.name}</div>
 
-                  <div className="mt-1 text-xs px-2 py-0.5 rounded-full bg-neutral-800 inline-flex gap-1">
-                    {t.tone === "venda" && "💰"}
-                    {t.tone === "formal" && "🧾"}
-                    {t.tone === "recuperacao" && "♻️"}
-                    {t.tone}
-                  </div>
+          {items.map((t) => (
+            <div key={t.id} className="border border-neutral-200 dark:border-neutral-800 p-5 rounded-xl bg-white dark:bg-neutral-900/30 shadow-sm">
+
+              <div className="flex justify-between">
+                <div>
+                  <div className="font-semibold text-neutral-900 dark:text-neutral-100">{t.name}</div>
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400">{t.tone}</div>
                 </div>
 
-                {/* 🔥 AÇÕES SEMPRE VISÍVEIS */}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => edit(t)}
-                    className="p-1.5 rounded-md text-neutral-400 hover:text-blue-400 hover:bg-blue-500/10 transition"
-                  >
+                <div className="flex gap-2">
+                  <button onClick={() => edit(t)}>
                     <Pencil size={14} />
                   </button>
-
-                  <button
-                    onClick={() => del(t.id)}
-                    className="p-1.5 rounded-md text-neutral-400 hover:text-red-400 hover:bg-red-500/10 transition"
-                  >
+                  <button onClick={() => del(t.id)}>
                     <Trash2 size={14} />
                   </button>
                 </div>
               </div>
 
-              {/* PREVIEW */}
-              <div className="space-y-2">
+              <div className="mt-3 space-y-2">
                 {t.versions?.slice(0, 2).map((v, i) => (
-                  <div
-                    key={i}
-                    className="bg-neutral-950/70 border border-neutral-800/60 rounded-lg p-2 text-xs text-neutral-300 font-mono line-clamp-3"
-                  >
+                  <div key={i} className="text-xs text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-900 p-2 rounded border border-neutral-200 dark:border-neutral-800">
                     {v}
                   </div>
                 ))}
-
-                {t.versions?.length > 2 && (
-                  <div className="text-xs text-neutral-500">
-                    + {t.versions.length - 2} variações
-                  </div>
-                )}
               </div>
 
-              {/* FOOTER */}
-              <div className="mt-4 flex justify-between text-xs text-neutral-500">
-                <span>{t.versions?.length || 0} variações</span>
-              </div>
             </div>
           ))}
+
         </div>
       )}
+
     </div>
   );
 }

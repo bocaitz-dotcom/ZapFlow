@@ -9,11 +9,11 @@ export function PageHeader({ eyebrow, title, subtitle, children }) {
             {eyebrow}
           </div>
         )}
-        <h1 className="font-display text-3xl sm:text-4xl font-black tracking-tighter leading-tight">
+        <h1 className="font-display text-3xl sm:text-4xl font-black tracking-tighter leading-tight text-neutral-900 dark:text-neutral-50">
           {title}
         </h1>
         {subtitle && (
-          <p className="text-neutral-400 mt-2 max-w-2xl text-sm sm:text-base">
+          <p className="text-neutral-500 dark:text-neutral-400 mt-2 max-w-2xl text-sm sm:text-base">
             {subtitle}
           </p>
         )}
@@ -27,15 +27,15 @@ export function MetricCard({ label, value, hint, accent, icon: Icon, testid }) {
   return (
     <div
       data-testid={testid}
-      className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5 hover:-translate-y-0.5 hover:border-neutral-700 transition-all duration-300 group"
+      className="bg-white dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-lg p-5 hover:-translate-y-0.5 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all duration-300 group shadow-sm"
     >
       <div className="flex items-start justify-between">
         <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">
           {label}
         </div>
-        {Icon && <Icon size={16} className="text-neutral-600 group-hover:text-neutral-400 transition-colors" />}
+        {Icon && <Icon size={16} className="text-neutral-400 dark:text-neutral-600 group-hover:text-neutral-600 dark:group-hover:text-neutral-400 transition-colors" />}
       </div>
-      <div className={`mt-4 font-mono text-3xl font-bold tracking-tight ${accent || "text-neutral-50"}`}>
+      <div className={`mt-4 font-mono text-3xl font-bold tracking-tight ${accent || "text-neutral-900 dark:text-neutral-50"}`}>
         {value}
       </div>
       {hint && <div className="text-xs text-neutral-500 mt-1">{hint}</div>}
@@ -45,8 +45,8 @@ export function MetricCard({ label, value, hint, accent, icon: Icon, testid }) {
 
 export function Empty({ title, subtitle, action }) {
   return (
-    <div className="border border-dashed border-neutral-800 rounded-lg p-12 text-center">
-      <div className="font-display text-xl font-bold text-neutral-300">{title}</div>
+    <div className="border border-dashed border-neutral-300 dark:border-neutral-800 rounded-lg p-12 text-center">
+      <div className="font-display text-xl font-bold text-neutral-600 dark:text-neutral-300">{title}</div>
       {subtitle && <div className="text-sm text-neutral-500 mt-2 max-w-md mx-auto">{subtitle}</div>}
       {action && <div className="mt-6">{action}</div>}
     </div>
@@ -55,11 +55,11 @@ export function Empty({ title, subtitle, action }) {
 
 export function Pill({ children, variant = "default" }) {
   const variants = {
-    default: "bg-neutral-800 text-neutral-300 border-neutral-700",
+    default: "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700",
     green: "bg-[#25D366]/10 text-[#25D366] border-[#25D366]/20",
-    red: "bg-red-500/10 text-red-400 border-red-500/20",
-    amber: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-    sky: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+    red: "bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20",
+    amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+    sky: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20",
   };
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded border ${variants[variant]}`}>

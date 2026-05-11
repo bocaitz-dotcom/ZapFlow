@@ -48,6 +48,7 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        "whatsapp-bubble": "#005c4b",
         whatsapp: {
           DEFAULT: "#25D366",
           dark: "#1ebe5c",
